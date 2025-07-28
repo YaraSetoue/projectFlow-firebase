@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { useSearchParams } from 'react-router-dom';
@@ -33,7 +34,7 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
   onItemsPerPageChange,
 }) => {
   return (
-    <footer className="flex-shrink-0 flex items-center justify-between py-3 px-4 sm:px-6 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+    <footer className="flex items-center justify-between py-3 px-4 sm:px-6 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="flex items-center gap-2">
             <span>Itens por página:</span>
             <select
@@ -302,7 +303,7 @@ const ProjectDetailPage = () => {
             } as any}
             className="flex flex-col h-full"
         >
-             <header className="flex-shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 sm:p-6 lg:p-8">
+             <header className="flex-shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 sm:p-6 lg:p-8 border-b border-slate-200 dark:border-slate-800">
                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
                         Tarefas
@@ -347,7 +348,7 @@ const ProjectDetailPage = () => {
                 </div>
             </header>
             
-            <main className="flex-grow overflow-y-auto px-4 sm:px-6 lg:px-8 pb-8">
+            <main className="flex-grow px-4 sm:px-6 lg:px-8 pb-8">
                  {loading ? (
                     <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-brand-500" /></div>
                  ) : tasksError ? (
@@ -356,16 +357,18 @@ const ProjectDetailPage = () => {
                      <KanbanBoard tasks={filteredTasks} loading={loading} projectId={projectId} onTaskClick={setSelectedTask} error={tasksError} moduleLookup={moduleLookup}/>
                 ) : (
                     sortedTasks.length > 0 ? (
-                        <TaskListView 
-                            tasks={paginatedTasks}
-                            onTaskClick={setSelectedTask} 
-                            moduleLookup={moduleLookup}
-                            projectMembers={projectMembers}
-                            isEditor={isEditor}
-                            currentUser={currentUser}
-                            sortConfig={sortConfig}
-                            requestSort={requestSort}
-                        />
+                        <div className="pt-6">
+                            <TaskListView 
+                                tasks={paginatedTasks}
+                                onTaskClick={setSelectedTask} 
+                                moduleLookup={moduleLookup}
+                                projectMembers={projectMembers}
+                                isEditor={isEditor}
+                                currentUser={currentUser}
+                                sortConfig={sortConfig}
+                                requestSort={requestSort}
+                            />
+                        </div>
                     ) : (
                          <p className="text-center text-slate-500 py-10">Nenhuma tarefa encontrada para os filtros selecionados.</p>
                     )
