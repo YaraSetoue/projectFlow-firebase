@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProjectFlow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                400: '#8c9eff',
+                500: '#667dfa',
+                600: '#536dfe',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="https://esm.sh/react-quill@2.0.0/dist/quill.snow.css">
+    <style type="text/tailwindcss">
+      /* Custom dark theme styles for React Quill */
+
+      /* General editor container style */
+      .dark .ql-snow {
+        @apply border-slate-700;
+      }
+
+      /* Toolbar style */
+      .dark .ql-toolbar {
+        @apply bg-slate-800 border-b border-slate-700 rounded-t-md;
+      }
+
+      /* Toolbar icons style (stroke color) */
+      .dark .ql-snow .ql-stroke {
+        @apply stroke-slate-400;
+      }
+
+      /* Toolbar icons style when selected */
+      .dark .ql-snow .ql-active .ql-stroke {
+        @apply stroke-white;
+      }
+
+      /* Options dropdown style (Normal, H1, H2) */
+      .dark .ql-snow .ql-picker-label {
+        @apply text-slate-400;
+      }
+
+      /* Options dropdown style when active */
+      .dark .ql-snow .ql-active .ql-picker-label {
+        @apply text-white;
+      }
+
+      /* Main text area style */
+      .dark .ql-container {
+        @apply bg-slate-900 rounded-b-md;
+      }
+
+      /* Text editor itself style */
+      .dark .ql-editor {
+        @apply text-slate-200;
+      }
+
+      /* Placeholder text style */
+      .dark .ql-editor.ql-blank::before {
+        @apply text-slate-500 not-italic;
+        content: 'Comece a escrever a documentação aqui...';
+      }
+
+      /* Add a focus ring for consistency with other inputs */
+      .dark .ql-container.ql-snow:focus-within {
+        @apply ring-2 ring-brand-500 border-brand-500;
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+          @apply bg-slate-100 dark:bg-slate-800;
+      }
+      ::-webkit-scrollbar-thumb {
+          @apply bg-slate-400 dark:bg-slate-600 rounded-full;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+          @apply bg-slate-500 dark:bg-slate-500;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom": "https://esm.sh/react-dom@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.6.3",
+    "framer-motion": "https://esm.sh/framer-motion@^12.23.6",
+    "recharts": "https://esm.sh/recharts@^3.1.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.525.0",
+    "react-hook-form": "https://esm.sh/react-hook-form@^7.52.0",
+    "@dnd-kit/core": "https://esm.sh/@dnd-kit/core@6.1.0",
+    "@dnd-kit/sortable": "https://esm.sh/@dnd-kit/sortable@8.0.0",
+    "@dnd-kit/utilities": "https://esm.sh/@dnd-kit/utilities@3.2.2",
+    "react-quill": "https://esm.sh/react-quill@2.0.0",
+    "@firebase/app": "https://esm.sh/@firebase/app@^0.14.0",
+    "@firebase/firestore": "https://esm.sh/@firebase/firestore@^4.9.0",
+    "@firebase/storage": "https://esm.sh/@firebase/storage@^0.14.0",
+    "@firebase/auth": "https://esm.sh/@firebase/auth@^1.11.0",
+    "crypto-js": "https://esm.sh/crypto-js@4.2.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-300">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
