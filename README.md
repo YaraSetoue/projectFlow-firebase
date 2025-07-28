@@ -1,6 +1,6 @@
 ProjectFlow é uma aplicação web moderna e completa para gerenciamento de projetos, projetada para equipes que buscam organizar, planejar e executar seu trabalho de forma eficiente. Construída com uma stack de tecnologias de ponta, a plataforma oferece uma experiência de usuário fluida e colaboração em tempo real.
 
-![Screenshot do Quadro Kanban](https://imgur.com/a/7pNaZPs)
+![Screenshot do Quadro Kanban](https://i.imgur.com/Ued7qDb.png)
 ---
 
 ## ✨ Funcionalidades Principais
