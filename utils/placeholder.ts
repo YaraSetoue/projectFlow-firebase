@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { startTimer, stopTimer } from '../services/firestoreService';
+import { Timestamp } from '@firebase/firestore';
 
 // --- FORMATTERS ---
 
@@ -23,6 +24,37 @@ export const formatDuration = (totalSeconds: number): string => {
         minutes.toString().padStart(2, '0'),
         seconds.toString().padStart(2, '0')
     ].join(':');
+};
+
+export const formatTimeAgo = (timestamp: Timestamp | undefined): string => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate();
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+    if (seconds < 5) return 'agora mesmo';
+
+    let interval = seconds / 31536000;
+    if (interval > 1) {
+      return `há ${Math.floor(interval)} anos`;
+    }
+    interval = seconds / 2592000;
+    if (interval > 1) {
+      return `há ${Math.floor(interval)} meses`;
+    }
+    interval = seconds / 86400;
+    if (interval > 1) {
+      return `há ${Math.floor(interval)} dias`;
+    }
+    interval = seconds / 3600;
+    if (interval > 1) {
+      return `há ${Math.floor(interval)} horas`;
+    }
+    interval = seconds / 60;
+    if (interval > 1) {
+      return `há ${Math.floor(interval)} minutos`;
+    }
+    return `há ${Math.floor(seconds)} segundos`;
 };
 
 

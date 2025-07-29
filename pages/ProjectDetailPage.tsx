@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { useSearchParams } from 'react-router-dom';
@@ -7,7 +6,7 @@ import { collection, query, orderBy, where, getDocs } from '@firebase/firestore'
 import { PlusCircle, Settings, Loader2, LayoutGrid, List } from 'lucide-react';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Task, Member, Module, User, Entity, TaskStatus } from '../types';
+import { Task, Member, Module, User, Entity, TaskStatus, Feature, TaskCategory } from '../types';
 import KanbanBoard from '../components/kanban/KanbanBoard';
 import TaskListView from '../components/views/TaskListView';
 import Button from '../components/ui/Button';
@@ -146,12 +145,24 @@ const ProjectDetailPage = () => {
         [projectId]
     );
     const { data: modules, loading: modulesLoading } = useFirestoreQuery<Module>(modulesQuery);
+
+    const categoriesQuery = useMemo(() =>
+        query(collection(db, 'projects', projectId, 'taskCategories'), orderBy('name', 'asc')),
+        [projectId]
+    );
+    const { data: categories, loading: categoriesLoading } = useFirestoreQuery<TaskCategory>(categoriesQuery);
     
     const entitiesQuery = useMemo(() =>
         query(collection(db, 'projects', projectId, 'entities'), orderBy('name', 'asc')),
         [projectId]
     );
     const { data: entities, loading: entitiesLoading } = useFirestoreQuery<Entity>(entitiesQuery);
+    
+    const featuresQuery = useMemo(() =>
+        query(collection(db, 'projects', projectId, 'features'), orderBy('name', 'asc')),
+        [projectId]
+    );
+    const { data: features, loading: featuresLoading } = useFirestoreQuery<Feature>(featuresQuery);
 
     useEffect(() => {
         if (!project?.memberUids || project.memberUids.length === 0) {
@@ -246,11 +257,21 @@ const ProjectDetailPage = () => {
         }
         return lookup;
     }, [modules]);
+
+    const categoryLookup = useMemo(() => {
+        const lookup: Record<string, TaskCategory> = {};
+        if (categories) {
+            categories.forEach(category => {
+                lookup[category.id] = category;
+            });
+        }
+        return lookup;
+    }, [categories]);
     
     // State and logic for TaskListView
     const { sortedTasks, requestSort, sortConfig } = useTaskSorter(filteredTasks, projectMembers);
     
-    const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading;
+    const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading || featuresLoading || categoriesLoading;
 
     return (
         <motion.div
@@ -300,8 +321,8 @@ const ProjectDetailPage = () => {
                             onClick={() => setCreateTaskModalOpen(true)} 
                             size="sm"
                             className="flex-1"
-                            disabled={!isEditor}
-                            title={!isEditor ? "Apenas editores ou proprietários podem criar tarefas." : ""}
+                            disabled={!isEditor || categoriesLoading || (categories && categories.length === 0)}
+                            title={!isEditor ? "Apenas editores ou proprietários podem criar tarefas." : (categories && categories.length === 0) ? "Crie uma categoria de tarefa nas configurações do projeto primeiro." : ""}
                         >
                             <PlusCircle className="mr-2 h-4 w-4" /> Nova Tarefa
                         </Button>
@@ -319,13 +340,13 @@ const ProjectDetailPage = () => {
                 </div>
             </header>
             
-            <main className="flex-grow">
+            <main className="flex-grow overflow-y-auto">
                  {loading ? (
                     <div className="flex justify-center items-center py-10 px-4 sm:px-6 lg:px-8"><Loader2 className="h-8 w-8 animate-spin text-brand-500" /></div>
                  ) : tasksError ? (
                     <div className="p-4 sm:p-6 lg:p-8"><ConnectionErrorState error={tasksError} context="tarefas do projeto" /></div>
                  ) : viewMode === 'board' ? (
-                     <div className="px-4 sm:px-6 lg:px-8 pb-8 h-full"><KanbanBoard tasks={filteredTasks} loading={loading} projectId={projectId} onTaskClick={setSelectedTask} error={tasksError} moduleLookup={moduleLookup}/></div>
+                     <div className="px-4 sm:px-6 lg:px-8 py-6 h-full"><KanbanBoard tasks={filteredTasks} projectId={projectId} onTaskClick={setSelectedTask} categories={categories || []} moduleLookup={moduleLookup} categoryLookup={categoryLookup}/></div>
                 ) : (
                     sortedTasks.length > 0 ? (
                         <div className="pt-6 px-4 sm:px-6 lg:px-8 pb-8">
@@ -355,7 +376,8 @@ const ProjectDetailPage = () => {
                     projectName={project.name}
                     projectMembers={projectMembers}
                     modules={modules || []}
-                    entities={entities || []}
+                    features={features || []}
+                    categories={categories || []}
                 />
             )}
             
@@ -370,6 +392,7 @@ const ProjectDetailPage = () => {
                     allTasks={allTasksForDependencies || []}
                     modules={modules || []}
                     entities={entities || []}
+                    categories={categories || []}
                 />
             )}
 

@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { collection, collectionGroup, query, where, getDocs, getDoc, doc, orderBy } from '@firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../firebase/config';
-import { Task, Project, Member, User, Module, Entity } from '../types';
+import { Task, Project, Member, User, Module, Entity, TaskCategory } from '../types';
 import { Loader2, CheckSquare } from 'lucide-react';
 import TaskCard from '../components/kanban/TaskCard';
 import TaskDetailModal from '../components/modals/TaskDetailModal';
@@ -18,6 +18,7 @@ const MyTasksPage = () => {
     const [loading, setLoading] = useState(true);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [projectsMap, setProjectsMap] = useState<Record<string, Project>>({});
+    const [modulesMap, setModulesMap] = useState<Record<string, Record<string, Module>>>({});
     
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [selectedProjectMembers, setSelectedProjectMembers] = useState<Member[]>([]);
@@ -39,6 +40,11 @@ const MyTasksPage = () => {
     [selectedTask]);
     const { data: projectEntities } = useFirestoreQuery<Entity>(projectEntitiesQuery);
 
+    const projectCategoriesQuery = useMemo(() => 
+        selectedTask ? query(collection(db, 'projects', selectedTask.projectId, 'taskCategories'), orderBy('name', 'asc')) : null,
+    [selectedTask]);
+    const { data: projectCategories } = useFirestoreQuery<TaskCategory>(projectCategoriesQuery);
+
     useEffect(() => {
         if (!currentUser) {
             setLoading(false);
@@ -57,19 +63,31 @@ const MyTasksPage = () => {
                 const userTasks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
                 setTasks(userTasks);
 
-                // Fetch unique project details
-                const projectIds: string[] = [...new Set(userTasks.map(t => t.projectId))];
-                const projectsData: Record<string, Project> = {};
-                const fetchPromises = projectIds.map(async (projectId) => {
-                    if (!projectsMap[projectId]) { // Avoid re-fetching
-                        const projectDoc = await getDoc(doc(db, 'projects', projectId));
+                // Fetch unique project and module details
+                const projectIds = [...new Set(userTasks.map(t => t.projectId))];
+                const newProjectsMap: Record<string, Project> = { ...projectsMap };
+                const newModulesMap: Record<string, Record<string, Module>> = { ...modulesMap };
+
+                const fetchPromises = projectIds
+                    .filter(id => !newProjectsMap[id] || !newModulesMap[id]) // Only fetch if not already present
+                    .map(async (pId) => {
+                        const projectDoc = await getDoc(doc(db, 'projects', pId));
                         if (projectDoc.exists()) {
-                            projectsData[projectId] = { id: projectDoc.id, ...projectDoc.data() } as Project;
+                            newProjectsMap[pId] = { id: projectDoc.id, ...projectDoc.data() } as Project;
                         }
-                    }
-                });
+
+                        const modulesQuery = query(collection(db, 'projects', pId, 'modules'));
+                        const modulesSnapshot = await getDocs(modulesQuery);
+                        const moduleLookup: Record<string, Module> = {};
+                        modulesSnapshot.forEach(moduleDoc => {
+                            moduleLookup[moduleDoc.id] = { id: moduleDoc.id, ...moduleDoc.data() } as Module;
+                        });
+                        newModulesMap[pId] = moduleLookup;
+                    });
+
                 await Promise.all(fetchPromises);
-                setProjectsMap(prev => ({ ...prev, ...projectsData }));
+                setProjectsMap(newProjectsMap);
+                setModulesMap(newModulesMap);
             } catch (error) {
                 console.error("Error fetching my tasks:", error);
             } finally {
@@ -134,17 +152,6 @@ const MyTasksPage = () => {
             return acc;
         }, {} as Record<string, { project: Project, tasks: Task[] }>);
     }, [tasks, projectsMap]);
-    
-    const moduleLookup = useMemo(() => {
-        const lookup: Record<string, Module> = {};
-        if (projectModules) {
-            projectModules.forEach(module => {
-                lookup[module.id] = module;
-            });
-        }
-        return lookup;
-    }, [projectModules]);
-
 
     const renderContent = () => {
         if (loading) {
@@ -192,7 +199,7 @@ const MyTasksPage = () => {
                                         task={task}
                                         onClick={() => setSelectedTask(task)}
                                         currentUser={currentUser}
-                                        moduleInfo={task.moduleId ? moduleLookup[task.moduleId] : undefined}
+                                        moduleInfo={task.moduleId && modulesMap[task.projectId] ? modulesMap[task.projectId][task.moduleId] : undefined}
                                         isBlocked={false} // This page does not compute blocked status.
                                         dragHandleListeners={{}} // No DnD on this page
                                     />
@@ -233,6 +240,7 @@ const MyTasksPage = () => {
                     allTasks={allTasksForDependencies || []}
                     modules={projectModules || []}
                     entities={projectEntities || []}
+                    categories={projectCategories || []}
                 />
             )}
         </motion.div>

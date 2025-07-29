@@ -5,28 +5,28 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { XCircle, AlertTriangle } from 'lucide-react';
 
 import KanbanColumn from './KanbanColumn';
-import { Task, TaskStatus, User, Module } from '../../types';
+import { Task, TaskStatus, User, Module, TaskCategory, SubStatus } from '../../types';
 import { updateTask, stopTimer } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
-import { Loader2 } from 'lucide-react';
-import ConnectionErrorState from '../ui/ConnectionErrorState';
 
 interface KanbanBoardProps {
     tasks: Task[];
-    loading: boolean;
     projectId: string;
     onTaskClick: (task: Task) => void;
-    error: Error | null;
+    categories: TaskCategory[];
     moduleLookup: Record<string, Module>;
+    categoryLookup: Record<string, TaskCategory>;
 }
 
-const COLUMN_TITLES: Record<TaskStatus, string> = {
-    todo: 'A Fazer',
-    inprogress: 'Em Andamento',
-    done: 'Concluído',
+const COLUMN_MAP = {
+    todo: { title: 'A Fazer' },
+    executing: { title: 'Executando' },
+    testing: { title: 'Teste' },
+    approved: { title: 'Aprovado' },
+    done: { title: 'Concluído' },
 };
 
-const KanbanBoard = ({ tasks, loading, projectId, onTaskClick, error, moduleLookup }: KanbanBoardProps) => {
+const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, categoryLookup }: KanbanBoardProps) => {
     const { currentUser } = useAuth();
     const [dndError, setDndError] = useState<string | null>(null);
 
@@ -37,18 +37,20 @@ const KanbanBoard = ({ tasks, loading, projectId, onTaskClick, error, moduleLook
         })
     );
 
-    const tasksByStatus = useMemo(() => {
-        const initialColumns: Record<TaskStatus, Task[]> = {
-            todo: [],
-            inprogress: [],
-            done: [],
-        };
+    const tasksByColumn = useMemo(() => {
+        const initialColumns: Record<string, Task[]> = { todo: [], executing: [], testing: [], approved: [], done: [] };
+        
         return tasks.reduce((acc, task) => {
-            if (acc[task.status]) {
-                acc[task.status].push(task);
+            let columnId: string = task.status;
+            if (task.status === 'inprogress') {
+                columnId = task.subStatus || 'executing';
+            }
+            if (acc[columnId]) {
+                acc[columnId].push(task);
             }
             return acc;
         }, initialColumns);
+
     }, [tasks]);
 
     const blockedStatusLookup = useMemo(() => {
@@ -57,7 +59,6 @@ const KanbanBoard = ({ tasks, loading, projectId, onTaskClick, error, moduleLook
             if (task.dependsOn && task.dependsOn.length > 0) {
                 lookup[task.id] = task.dependsOn.some(depId => {
                     const dependencyTask = tasks.find(t => t.id === depId);
-                    // A task is blocked if its dependency exists and is not 'done'
                     return dependencyTask && dependencyTask.status !== 'done';
                 });
             }
@@ -73,46 +74,53 @@ const KanbanBoard = ({ tasks, loading, projectId, onTaskClick, error, moduleLook
         const { active, over } = event;
 
         if (over && active.id !== over.id) {
-            const activeContainer = active.data.current?.sortable.containerId;
-            const overContainer = over.data.current?.sortable.containerId || over.id;
-            
-            if(activeContainer !== overContainer) {
-                const taskId = active.id as string;
-                const newStatus = overContainer as TaskStatus;
-                const task = tasks.find(t => t.id === taskId);
+            const taskId = active.id as string;
+            const destColumn = over.data.current?.sortable.containerId || over.id;
+            const task = tasks.find(t => t.id === taskId);
 
-                if (!task) return;
+            if (!task) return;
 
-                const isBlocked = blockedStatusLookup[taskId];
+            const isBlocked = blockedStatusLookup[taskId];
 
-                if (isBlocked && (newStatus === 'inprogress' || newStatus === 'done')) {
-                    setDndError(`A tarefa "${task.title}" está bloqueada e não pode ser movida para esta coluna.`);
-                    return; // Prevent the update
+            if (isBlocked && destColumn !== 'todo') {
+                setDndError(`A tarefa "${task.title}" está bloqueada e não pode ser movida.`);
+                return;
+            }
+
+            // QA workflow restriction check
+            const category = categoryLookup[task.categoryId];
+            if (category && !category.requiresTesting && (destColumn === 'testing' || destColumn === 'approved')) {
+                setDndError(`Tarefas da categoria "${category.name}" não requerem teste ou aprovação.`);
+                return;
+            }
+
+            let newStatus: TaskStatus;
+            let newSubStatus: SubStatus | null = null;
+
+            if (destColumn === 'todo' || destColumn === 'done') {
+                newStatus = destColumn;
+                newSubStatus = null;
+            } else if (['executing', 'testing', 'approved'].includes(destColumn)) {
+                newStatus = 'inprogress';
+                newSubStatus = destColumn as SubStatus;
+            } else {
+                // Invalid drop column
+                return;
+            }
+
+            try {
+                if (newStatus === 'done' && currentUser?.activeTimer?.taskId === taskId) {
+                    await stopTimer();
                 }
-
-                try {
-                    // Check if moving to 'done' and the user's active timer is for this task
-                    if (newStatus === 'done' && currentUser?.activeTimer?.taskId === taskId) {
-                        await stopTimer();
-                    }
-                    
-                    await updateTask(projectId, taskId, { status: newStatus });
                 
-                } catch (err: any) {
-                    console.error("Failed to update task status:", err);
-                    setDndError(err.message || "Não foi possível salvar a movimentação da tarefa. Verifique sua conexão e tente novamente.");
-                }
+                await updateTask(projectId, taskId, { status: newStatus, subStatus: newSubStatus });
+            
+            } catch (err: any) {
+                console.error("Failed to update task status:", err);
+                setDndError(err.message || "Não foi possível salvar a movimentação da tarefa. Verifique sua conexão e tente novamente.");
             }
         }
     };
-    
-    if (loading) {
-        return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-brand-500" /></div>;
-    }
-
-    if (error) {
-        return <ConnectionErrorState error={error} context="tarefas do projeto" />;
-    }
 
     return (
         <>
@@ -138,20 +146,56 @@ const KanbanBoard = ({ tasks, loading, projectId, onTaskClick, error, moduleLook
                 )}
             </AnimatePresence>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {(Object.keys(COLUMN_TITLES) as TaskStatus[]).map((status) => (
-                        <KanbanColumn
-                            key={status}
-                            id={status}
-                            title={COLUMN_TITLES[status]}
-                            tasks={tasksByStatus[status]}
-                            onTaskClick={onTaskClick}
-                            blockedStatusLookup={blockedStatusLookup}
-                            moduleLookup={moduleLookup}
-                            currentUser={currentUser}
-                        />
-                    ))}
-                </div>
+                 <div className="w-full overflow-x-auto pb-4">
+                    <div className="flex gap-6 min-w-max h-full">
+                        <div className="w-80 flex-shrink-0 h-full">
+                             <KanbanColumn
+                                id="todo"
+                                title="A Fazer"
+                                tasks={tasksByColumn.todo || []}
+                                onTaskClick={onTaskClick}
+                                blockedStatusLookup={blockedStatusLookup}
+                                moduleLookup={moduleLookup}
+                                categoryLookup={categoryLookup}
+                                currentUser={currentUser}
+                            />
+                        </div>
+
+                        <div className="flex-shrink-0 bg-slate-100/50 dark:bg-slate-900 rounded-lg p-4">
+                             <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4 px-2">Em Andamento</h2>
+                             <div className="flex gap-6">
+                                {(['executing', 'testing', 'approved'] as const).map((status) => (
+                                    <div key={status} className="w-80 h-full">
+                                        <KanbanColumn
+                                            id={status}
+                                            title={COLUMN_MAP[status].title}
+                                            tasks={tasksByColumn[status] || []}
+                                            onTaskClick={onTaskClick}
+                                            blockedStatusLookup={blockedStatusLookup}
+                                            moduleLookup={moduleLookup}
+                                            categoryLookup={categoryLookup}
+                                            currentUser={currentUser}
+                                            isSubColumn={true}
+                                        />
+                                    </div>
+                                ))}
+                             </div>
+                        </div>
+
+                        <div className="w-80 flex-shrink-0 h-full">
+                             <KanbanColumn
+                                id="done"
+                                title="Concluído"
+                                tasks={tasksByColumn.done || []}
+                                onTaskClick={onTaskClick}
+                                blockedStatusLookup={blockedStatusLookup}
+                                moduleLookup={moduleLookup}
+                                categoryLookup={categoryLookup}
+                                currentUser={currentUser}
+                            />
+                        </div>
+                    </div>
+                 </div>
             </DndContext>
         </>
     );

@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 // @ts-ignore
 import { useNavigate } from 'react-router-dom';
-import { collection, query, orderBy, Timestamp, deleteField, doc } from '@firebase/firestore';
+import { collection, query, orderBy, Timestamp, deleteField, doc, where } from '@firebase/firestore';
 import { useFirestoreQuery, useFirestoreDocument } from '../../hooks/useFirestoreQuery';
 import { db } from '../../firebase/config';
 import { updateTask, addTaskComment, sendNotification, deleteTask, addLinkToTask, removeLinkFromTask, updateLinkInTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
-import { useTimeTracking, formatDuration } from '../../utils/placeholder';
-import { Task, UserSummary, Comment, Module, TimeLog, Project, Member, TaskLink, Entity, TaskStatus, Feature } from '../../types';
+import { useTimeTracking, formatDuration, formatTimeAgo } from '../../utils/placeholder';
+import { Task, UserSummary, Comment, Module, TimeLog, Project, Member, TaskLink, Entity, TaskStatus, Feature, SubStatus, TaskCategory, Activity } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -15,10 +15,12 @@ import Textarea from '../ui/Textarea';
 import Avatar from '../ui/Avatar';
 import Popover from '../ui/Popover';
 import AlertDialog from '../ui/AlertDialog';
-import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save, Shapes } from 'lucide-react';
+import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save, Shapes, Tag, Activity as ActivityIcon } from 'lucide-react';
 import Badge from '../ui/Badge';
 import ReactQuill from 'react-quill';
 import IconRenderer from '../ui/IconRenderer';
+import { MODULE_COLOR_MAP } from '../../utils/styleUtils';
+
 
 interface TaskDetailModalProps {
   isOpen: boolean;
@@ -30,6 +32,7 @@ interface TaskDetailModalProps {
   allTasks: Task[];
   modules: Module[];
   entities: Entity[];
+  categories: TaskCategory[];
 }
 
 const QuillEditor = React.memo(ReactQuill);
@@ -47,10 +50,19 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
     done: 'Concluído',
 };
 
+const SUB_STATUS_LABELS: Record<SubStatus, string> = {
+    executing: 'Executando',
+    testing: 'Em Teste',
+    approved: 'Aprovado'
+};
+
 const taskStatusColors: Record<string, string> = {
     todo: 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
     inprogress: 'bg-blue-200 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
     done: 'bg-green-200 dark:bg-green-900/40 text-green-600 dark:text-green-300',
+    executing: 'bg-blue-200 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
+    testing: 'bg-yellow-200 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-300',
+    approved: 'bg-teal-200 dark:bg-teal-900/40 text-teal-600 dark:text-teal-300',
 };
 
 type ActiveTab = 'activity' | 'dependencies' | 'links';
@@ -80,7 +92,7 @@ const TabButton = ({
 );
 
 
-const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, taskId, projectId, project, projectMembers, allTasks, modules, entities }) => {
+const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, taskId, projectId, project, projectMembers, allTasks, modules, entities, categories }) => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
     
@@ -129,11 +141,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     useEffect(() => {
         if (realTimeTask) {
             setEditedTask(realTimeTask);
-            if (isEditing) {
-                // If in edit mode, make sure the local state reflects the latest data
-            }
         }
-    }, [realTimeTask, isEditing]);
+    }, [realTimeTask]);
     
     useEffect(() => {
         // Reset local state when the modal is opened for a new task
@@ -156,6 +165,24 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
         [projectId, taskId]
     );
     const { data: comments, loading: commentsLoading, error: commentsError } = useFirestoreQuery<Comment>(commentsQuery);
+    
+    const activitiesQuery = useMemo(() => 
+        query(collection(db, 'projects', projectId, 'activity'), where('taskId', '==', taskId), orderBy('createdAt', 'asc')),
+        [projectId, taskId]
+    );
+    const { data: activities, loading: activitiesLoading, error: activitiesError } = useFirestoreQuery<Activity>(activitiesQuery);
+
+
+    const timelineItems = useMemo(() => {
+        if (!comments && !activities) return [];
+        const combined: Array<{type: 'comment', data: Comment, createdAt: Timestamp} | {type: 'activity', data: Activity, createdAt: Timestamp}> = [
+            ...(comments || []).map(c => ({ type: 'comment', data: c, createdAt: c.createdAt })),
+            ...(activities || []).map(a => ({ type: 'activity', data: a, createdAt: a.createdAt })),
+        ];
+        combined.sort((a, b) => a.createdAt.toDate().getTime() - b.createdAt.toDate().getTime());
+        return combined;
+    }, [comments, activities]);
+
 
     const featuresQuery = useMemo(() =>
         query(collection(db, 'projects', projectId, 'features'), orderBy('name', 'asc')),
@@ -174,6 +201,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     const relatedFeature = useMemo(() =>
         realTimeTask?.featureId && features ? features.find(f => f.id === realTimeTask.featureId) : null,
     [realTimeTask, features]);
+
+    const relatedCategory = useMemo(() => 
+        realTimeTask?.categoryId && categories ? categories.find(c => c.id === realTimeTask.categoryId) : null,
+    [realTimeTask, categories]);
     
     const availableTasksForDependency = useMemo(() => {
         if (!realTimeTask) return [];
@@ -236,12 +267,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                 await handleStopTimer();
             }
 
-            const updatePayload: { [key: string]: any } = { 
+            const updatePayload: any = { 
                 title: editedTask.title,
                 description: editedTask.description,
                 assignee: editedTask.assignee || null,
                 dueDate: editedTask.dueDate || null,
                 status: editedTask.status,
+                subStatus: editedTask.subStatus || null,
+                categoryId: editedTask.categoryId
             };
 
             if (editedTask.featureId) {
@@ -280,7 +313,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
             return;
         }
         setIsStatusOpen(false);
-        setEditedTask({...editedTask, status: newStatus});
+        
+        const updatedTask = {...editedTask, status: newStatus};
+        if (newStatus === 'inprogress' && editedTask.status !== 'inprogress') {
+            updatedTask.subStatus = 'executing';
+        }
+        setEditedTask(updatedTask);
     };
 
     const handleConfirmDelete = async () => {
@@ -427,6 +465,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     const commentsCount = comments?.length ?? 0;
     const dependenciesCount = realTimeTask?.dependsOn?.length ?? 0;
     const linksCount = realTimeTask?.links?.length ?? 0;
+    const activityCount = commentsCount + (activities?.length || 0);
 
     const renderContent = () => {
         if (taskLoading) {
@@ -496,7 +535,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                         <div className="border-b border-slate-200 dark:border-slate-700">
                             <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                                 <TabButton onClick={() => setActiveTab('activity')} isActive={activeTab === 'activity'}>
-                                    Atividade {commentsCount > 0 && <Badge>{commentsCount}</Badge>}
+                                    Atividade {activityCount > 0 && <Badge>{activityCount}</Badge>}
                                 </TabButton>
                                 <TabButton onClick={() => setActiveTab('dependencies')} isActive={activeTab === 'dependencies'}>
                                     Dependências {dependenciesCount > 0 && <Badge>{dependenciesCount}</Badge>}
@@ -531,18 +570,27 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                                         </form>
                                     </div>
                                     <div className="space-y-4">
-                                        {commentsLoading && <div className="text-center"><Loader2 className="h-5 w-5 animate-spin"/></div>}
-                                        {commentsError && <p className="text-sm text-red-500 text-center">Não foi possível carregar os comentários.</p>}
-                                        {comments && comments.length === 0 && <p className="text-sm text-slate-500 text-center py-4">Nenhum comentário ainda.</p>}
-                                        {comments && comments.length > 0 && comments.map(comment => (
-                                            <div key={comment.id} className="flex items-start gap-3">
-                                                <Avatar user={comment.author} size="sm" />
+                                        {(commentsLoading || activitiesLoading) && <div className="text-center"><Loader2 className="h-5 w-5 animate-spin"/></div>}
+                                        {(commentsError || activitiesError) && <p className="text-sm text-red-500 text-center">Não foi possível carregar a atividade.</p>}
+                                        {timelineItems.length === 0 && !commentsLoading && !activitiesLoading && <p className="text-sm text-slate-500 text-center py-4">Nenhuma atividade ainda.</p>}
+                                        {timelineItems.map(item => (
+                                            item.type === 'comment' ?
+                                            <div key={item.data.id} className="flex items-start gap-3">
+                                                <Avatar user={item.data.author} size="sm" />
                                                 <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 w-full">
                                                     <div className="flex items-center justify-between">
-                                                        <span className="font-semibold text-sm">{comment.author.displayName}</span>
-                                                        <span className="text-xs text-slate-500">{new Date(comment.createdAt?.toDate()).toLocaleString()}</span>
+                                                        <span className="font-semibold text-sm">{item.data.author.displayName}</span>
+                                                        <span className="text-xs text-slate-500">{new Date(item.createdAt?.toDate()).toLocaleString()}</span>
                                                     </div>
-                                                    <p className="text-sm mt-1 whitespace-pre-wrap">{comment.content}</p>
+                                                    <p className="text-sm mt-1 whitespace-pre-wrap">{item.data.content}</p>
+                                                </div>
+                                            </div>
+                                            :
+                                            <div key={item.data.id} className="flex items-center gap-3">
+                                                <ActivityIcon className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                                                <div className="flex-1 text-sm text-slate-500 dark:text-slate-400">
+                                                    {item.data.message}
+                                                    <span className="ml-2 text-xs">({formatTimeAgo(item.createdAt)})</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -662,8 +710,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                                 </div>
                             </Popover>
                         ) : (
-                            <Badge className={`!py-1 !px-3 font-medium ${taskStatusColors[realTimeTask.status]}`}>
-                                {STATUS_LABELS[realTimeTask.status]}
+                            <Badge className={`!py-1 !px-3 font-medium ${taskStatusColors[realTimeTask.subStatus || realTimeTask.status]}`}>
+                                {realTimeTask.status === 'inprogress' ? SUB_STATUS_LABELS[realTimeTask.subStatus || 'executing'] : STATUS_LABELS[realTimeTask.status]}
                             </Badge>
                         )}
                     </PropertyBlock>
@@ -705,6 +753,33 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                             </div>
                         )}
                     </PropertyBlock>
+                    
+                    <PropertyBlock label="Categoria">
+                         {isEditing ? (
+                            <select
+                                className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                                value={editedTask.categoryId || ''}
+                                onChange={e => setEditedTask({ ...editedTask, categoryId: e.target.value })}
+                                disabled={!isEditor || !categories}
+                                required
+                            >
+                                {categories.map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                ))}
+                            </select>
+                         ) : (
+                             <div className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                                {relatedCategory ? (
+                                    <>
+                                        <IconRenderer name={relatedCategory.icon} className={MODULE_COLOR_MAP[relatedCategory.color]?.text} />
+                                        <span>{relatedCategory.name}</span>
+                                    </>
+                                ) : (
+                                    <span className="text-slate-500 dark:text-slate-400">Nenhuma</span>
+                                )}
+                            </div>
+                         )}
+                    </PropertyBlock>
 
                     <PropertyBlock label="Funcionalidade Relacionada">
                          {isEditing ? (
@@ -744,7 +819,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                              <Input 
                                 type="date"
                                 value={dueDateAsInputString(editedTask.dueDate)}
-                                onChange={e => setEditedTask({...editedTask, dueDate: e.target.value ? Timestamp.fromDate(new Date(e.target.value)) : null})}
+                                onChange={e => setEditedTask({...editedTask, dueDate: e.target.value ? Timestamp.fromDate(new Date(`${e.target.value}T00:00:00`)) : null})}
                                 disabled={!isEditor}
                             />
                         ) : (

@@ -2,6 +2,15 @@ import { Timestamp } from '@firebase/firestore';
 
 // A central place for shared TypeScript types and interfaces.
 
+export interface TaskCategory {
+  id: string;
+  projectId: string;
+  name: string;
+  color: string;
+  icon: string;
+  requiresTesting: boolean;
+}
+
 export interface TimeLog {
   userId: string;
   durationInSeconds: number;
@@ -86,6 +95,7 @@ export type RegisterData = LoginData & {
 }
 
 export type TaskStatus = 'todo' | 'inprogress' | 'done';
+export type SubStatus = 'executing' | 'testing' | 'approved';
 
 export interface UserSummary {
   uid: string;
@@ -121,6 +131,7 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
+  subStatus?: SubStatus | null;
   assignee: UserSummary | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -129,6 +140,7 @@ export interface Task {
   dependsOn?: string[]; // Array of task IDs this task is blocked by
   featureId?: string;
   moduleId?: string;
+  categoryId: string;
   timeLogs?: TimeLog[];
   links?: TaskLink[];
 }
@@ -219,4 +231,14 @@ export interface Feature {
   userFlows: UserFlow[];
   testCases: TestCase[];
   createdAt: Timestamp;
+}
+
+// --- Activity Feed Types ---
+export interface Activity {
+    id: string;
+    projectId: string;
+    message: string;
+    user: UserSummary;
+    createdAt: Timestamp;
+    taskId?: string; // Optional: to link activity to a specific task
 }

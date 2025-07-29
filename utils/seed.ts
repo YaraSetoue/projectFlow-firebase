@@ -1,4 +1,4 @@
-import { User, Attribute, RelationshipType, Member, MemberRole, Task, TaskStatus } from '../types';
+import { User, Attribute, RelationshipType, Member, MemberRole, Task, TaskStatus, SubStatus, TaskCategory } from '../types';
 import { Timestamp } from '@firebase/firestore';
 
 // Helper to generate simple random IDs for mock data
@@ -75,6 +75,13 @@ export const getSeedData = (currentUser: User) => {
         },
     ];
 
+    const taskCategoriesData: Omit<TaskCategory, 'id' | 'projectId'>[] = [
+        { name: "Bug", icon: "bug", color: "red", requiresTesting: true },
+        { name: "Funcionalidade", icon: "zap", color: "purple", requiresTesting: true },
+        { name: "Documentação", icon: "book", color: "blue", requiresTesting: false },
+        { name: "Banco de Dados", icon: "database", color: "green", requiresTesting: false },
+    ];
+
     // 4. Define Entities
     const entitiesData: { name: string, description: string, attributes: Attribute[] }[] = [
         {
@@ -131,12 +138,14 @@ export const getSeedData = (currentUser: User) => {
     const userSummary = (member: SeedMember) => ({ uid: member.uid, displayName: member.displayName, photoURL: member.photoURL });
 
     // 6. Define Tasks, linked to modules by name
-    const tasksData: (Pick<Task, 'title' | 'description' | 'status' | 'assignee' | 'commentsCount' | 'timeLogs'> & { moduleName: string, dueDate?: Timestamp })[] = [
+    const tasksData: (Pick<Task, 'title' | 'description' | 'status' | 'assignee' | 'commentsCount' | 'timeLogs' | 'subStatus'> & { moduleName: string; categoryName: string; dueDate?: Timestamp })[] = [
         {
             moduleName: "Gerenciamento de Usuários",
+            categoryName: "Funcionalidade",
             title: "Implementar endpoint de registro com hash de senha",
             description: "Criar a rota POST /api/auth/register que valida os dados do usuário, hasheia a senha com bcrypt e salva no banco de dados.",
             status: 'done',
+            subStatus: null,
             assignee: userSummary(aliceMember),
             commentsCount: 1,
             timeLogs: [],
@@ -144,9 +153,11 @@ export const getSeedData = (currentUser: User) => {
         },
         {
             moduleName: "Gerenciamento de Usuários",
+            categoryName: "Funcionalidade",
             title: "Desenvolver fluxo de login com JWT",
             description: "Criar a rota POST /api/auth/login que verifica as credenciais e retorna um JSON Web Token (JWT) em caso de sucesso.",
             status: 'inprogress',
+            subStatus: 'executing',
             assignee: userSummary(aliceMember),
             commentsCount: 0,
             timeLogs: [],
@@ -154,9 +165,11 @@ export const getSeedData = (currentUser: User) => {
         },
         {
             moduleName: "Catálogo de Produtos",
+            categoryName: "Funcionalidade",
             title: "Desenvolver API de busca de produtos (com paginação)",
             description: "Criar a rota GET /api/products que permite buscar produtos com filtros e paginação.",
             status: 'inprogress',
+            subStatus: 'testing',
             assignee: userSummary(bobMember),
             commentsCount: 1,
             timeLogs: [],
@@ -164,9 +177,11 @@ export const getSeedData = (currentUser: User) => {
         },
         {
             moduleName: "Catálogo de Produtos",
+            categoryName: "Banco de Dados",
             title: "Configurar indexação de produtos no Algolia",
-            description: "Criar um script para sincronizar o banco de dados de produtos com o índice do Algolia.",
-            status: 'todo',
+            description: "Criar um script para sincronizar o banco de dados de produtos com o índice do Algolia. Isso não requer teste de QA formal.",
+            status: 'inprogress',
+            subStatus: 'executing',
             assignee: userSummary(bobMember),
             commentsCount: 0,
             timeLogs: [],
@@ -174,9 +189,11 @@ export const getSeedData = (currentUser: User) => {
         },
         {
             moduleName: "Carrinho de Compras e Checkout",
+            categoryName: "Funcionalidade",
             title: "Modelar API do carrinho de compras",
             description: "Definir os endpoints para adicionar, remover e visualizar itens no carrinho. O estado do carrinho pode ser salvo no backend ou no cliente.",
             status: 'todo',
+            subStatus: null,
             assignee: userSummary(carolMember),
             commentsCount: 0,
             timeLogs: [],
@@ -184,10 +201,23 @@ export const getSeedData = (currentUser: User) => {
         },
         {
             moduleName: "Carrinho de Compras e Checkout",
+            categoryName: "Funcionalidade",
             title: "Integrar API do Stripe para pagamentos",
             description: "Implementar o fluxo de checkout usando a API Payment Intents do Stripe para processar pagamentos de forma segura.",
             status: 'todo',
+            subStatus: null,
             assignee: userSummary(ownerMember),
+            commentsCount: 0,
+            timeLogs: [],
+        },
+        {
+            moduleName: "Gerenciamento de Usuários",
+            categoryName: "Documentação",
+            title: "Escrever documentação para a API de Auth",
+            description: "Documentar os endpoints de registro e login, incluindo os payloads esperados e as respostas.",
+            status: 'todo',
+            subStatus: null,
+            assignee: null,
             commentsCount: 0,
             timeLogs: [],
         }
@@ -222,6 +252,7 @@ export const getSeedData = (currentUser: User) => {
         relationshipsData,
         tasksData,
         mockUsers,
-        commentsData
+        commentsData,
+        taskCategoriesData
     };
 };

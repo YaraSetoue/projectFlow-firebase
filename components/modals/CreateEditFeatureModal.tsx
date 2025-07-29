@@ -24,6 +24,9 @@ const TabButton = ({ isActive, onClick, children }: { isActive: boolean; onClick
     </button>
 );
 
+const ProjectContext = React.createContext<{ entities: Entity[] }>({ entities: [] });
+const useProjectContext = () => React.useContext(ProjectContext);
+
 const UserFlowEditor = ({ flow, onUpdate, onRemove, onMove, isFirst, isLast }: { flow: UserFlow, onUpdate: (flow: UserFlow) => void, onRemove: () => void, onMove: (direction: 'up' | 'down') => void, isFirst: boolean, isLast: boolean }) => {
     const [isEntityPopoverOpen, setIsEntityPopoverOpen] = useState(false);
     const { entities } = useProjectContext();
@@ -75,9 +78,6 @@ const UserFlowEditor = ({ flow, onUpdate, onRemove, onMove, isFirst, isLast }: {
         </div>
     );
 };
-
-const ProjectContext = React.createContext<{ entities: Entity[] }>({ entities: [] });
-const useProjectContext = () => React.useContext(ProjectContext);
 
 const CreateEditFeatureModal: React.FC<CreateEditFeatureModalProps> = ({ isOpen, onClose, projectId, feature, modules, entities }) => {
     const [name, setName] = useState('');

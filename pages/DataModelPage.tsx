@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, orderBy, getDocs, where } from '@firebase/firestore';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Entity, Relationship, Module, Task, Member, User } from '../types';
+import { Entity, Relationship, Module, Task, Member, User, TaskCategory } from '../types';
 import { PlusCircle, Loader2, Database, Share2 } from 'lucide-react';
 import { useProject } from '../contexts/ProjectContext';
 import { useAuth } from '../hooks/useAuth';
@@ -76,6 +76,13 @@ const DataModelPage = () => {
 
     const tasksQuery = useMemo(() => query(collection(db, 'projects', projectId, 'tasks')), [projectId]);
     const { data: tasks, loading: tasksLoading, error: tasksError } = useFirestoreQuery<Task>(tasksQuery);
+    
+    const categoriesQuery = useMemo(() => 
+        query(collection(db, 'projects', projectId, 'taskCategories'), orderBy('name', 'asc')), 
+        [projectId]
+    );
+    const { data: categories, loading: categoriesLoading, error: categoriesError } = useFirestoreQuery<TaskCategory>(categoriesQuery);
+
 
     // Effect to open task modal from URL
     useEffect(() => {
@@ -136,8 +143,8 @@ const DataModelPage = () => {
         setSearchParams({}, { replace: true });
     };
 
-    const loading = entitiesLoading || relationshipsLoading || modulesLoading || tasksLoading;
-    const error = entitiesError || relationshipsError || modulesError || tasksError;
+    const loading = entitiesLoading || relationshipsLoading || modulesLoading || tasksLoading || categoriesLoading;
+    const error = entitiesError || relationshipsError || modulesError || tasksError || categoriesError;
 
     return (
         <motion.div
@@ -244,6 +251,7 @@ const DataModelPage = () => {
                         allTasks={tasks || []}
                         modules={modules || []}
                         entities={entities || []}
+                        categories={categories || []}
                     />
                 )}
             </AnimatePresence>

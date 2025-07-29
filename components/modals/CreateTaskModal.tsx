@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Timestamp, collection, query, orderBy } from '@firebase/firestore';
+import { Timestamp } from '@firebase/firestore';
 import { createTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
-import { UserSummary, Module, Member, Feature, Task } from '../../types';
+import { UserSummary, Module, Member, Feature, Task, TaskCategory } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -10,8 +10,6 @@ import Textarea from '../ui/Textarea';
 import { Loader2, ChevronDown, UserCircle, Check } from 'lucide-react';
 import Popover from '../ui/Popover';
 import Avatar from '../ui/Avatar';
-import { db } from '../../firebase/config';
-import { useFirestoreQuery } from '../../hooks/useFirestoreQuery';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -21,13 +19,15 @@ interface CreateTaskModalProps {
   projectMembers: Member[];
   modules: Module[];
   features: Feature[];
+  categories: TaskCategory[];
 }
 
-const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, features }) => {
+const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, features, categories }) => {
   const { currentUser } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState<UserSummary | null>(null);
+  const [categoryId, setCategoryId] = useState<string>(categories[0]?.id || '');
   const [featureId, setFeatureId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -47,6 +47,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       setTitle('');
       setDescription('');
       setAssignee(null);
+      setCategoryId(categories[0]?.id || '');
       setFeatureId('');
       setDueDate('');
       setError('');
@@ -66,6 +67,10 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       setError("O título da tarefa é obrigatório.");
       return;
     }
+    if (!categoryId) {
+        setError("A categoria é obrigatória.");
+        return;
+    }
     if (!currentUser || !projectId) {
       setError("Erro de autenticação ou ID do projeto ausente. Tente recarregar a página.");
       return;
@@ -78,6 +83,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       const taskPayload: { [key: string]: any } = {
         title: title,
         description: description,
+        categoryId: categoryId,
       };
   
       if (assignee) {
@@ -91,13 +97,13 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
         }
       }
       if (dueDate) {
-        taskPayload.dueDate = Timestamp.fromDate(new Date(dueDate));
+        taskPayload.dueDate = Timestamp.fromDate(new Date(`${dueDate}T00:00:00`));
       }
   
       await createTask(
           projectId, 
           projectName, 
-          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId'>>
+          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId' | 'categoryId'>>
       );
       
       handleClose();
@@ -141,6 +147,23 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                 />
             </div>
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="categoryId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Categoria <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="categoryId"
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                    disabled={isLoading || !categories}
+                    required
+                    className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
                  <div className="relative">
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                         Atribuir a
@@ -187,6 +210,9 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                         </div>
                     </Popover>
                 </div>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="featureId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Funcionalidade Relacionada
@@ -210,20 +236,20 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                     ))}
                   </select>
                 </div>
-            </div>
 
-            <div>
-                 <label htmlFor="dueDate" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Data de Entrega (Opcional)
-                </label>
-                <Input
-                    id="dueDate"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    disabled={isLoading}
-                    className="appearance-none"
-                />
+                <div>
+                     <label htmlFor="dueDate" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        Data de Entrega (Opcional)
+                    </label>
+                    <Input
+                        id="dueDate"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        disabled={isLoading}
+                        className="appearance-none"
+                    />
+                </div>
             </div>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
@@ -232,7 +258,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                 <Button type="button" variant="ghost" onClick={handleClose} disabled={isLoading}>
                     Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading || !title.trim()}>
+                <Button type="submit" disabled={isLoading || !title.trim() || !categoryId}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Criar Tarefa
                 </Button>

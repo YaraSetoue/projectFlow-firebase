@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, Lock, GripVertical, Clock, Play, Pause, Link2 } from 'lucide-react';
-import { Task, User, Module } from '../../types';
+import { MessageSquare, Lock, GripVertical, Clock, Play, Pause, Link2, CheckCircle, FlaskConical, AlertTriangle } from 'lucide-react';
+import { Task, User, Module, TaskCategory } from '../../types';
 import Avatar from '../ui/Avatar';
 import Badge from '../ui/Badge';
 import { useTimeTracking, formatDuration } from '../../utils/placeholder';
@@ -15,11 +15,12 @@ interface TaskCardProps {
   isDragging?: boolean;
   isBlocked?: boolean;
   moduleInfo?: Module;
+  categoryInfo?: TaskCategory;
   dragHandleListeners?: any;
   currentUser: User | null;
 }
 
-const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandleListeners, currentUser }: TaskCardProps) => {
+const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, categoryInfo, dragHandleListeners, currentUser }: TaskCardProps) => {
     const { handleStart, handleStop, isBusy, error: timerError } = useTimeTracking();
     const [runningTime, setRunningTime] = useState(0);
     const timerIntervalRef = useRef<number | null>(null);
@@ -31,8 +32,8 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandle
         return (task.timeLogs || []).reduce((acc, log) => acc + log.durationInSeconds, 0);
     }, [task.timeLogs]);
     
-    const moduleColorClasses = moduleInfo?.color ? MODULE_COLOR_MAP[moduleInfo.color]?.badge : MODULE_COLOR_MAP['gray'].badge;
-
+    const categoryColorClasses = categoryInfo?.color ? MODULE_COLOR_MAP[categoryInfo.color]?.badge : MODULE_COLOR_MAP['gray'].badge;
+    
     useEffect(() => {
         if (isTimerActiveForThisTask && currentUser?.activeTimer?.startTime) {
             const startTimeMs = currentUser.activeTimer.startTime.toDate().getTime();
@@ -57,14 +58,16 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandle
         handleStop();
     };
 
+    const statusBorderColor = 
+        task.status === 'done' ? 'border-green-500' :
+        task.status === 'inprogress' ? 'border-blue-500' :
+        'border-slate-400 dark:border-slate-600';
+
   return (
     <motion.div
       {...{layoutId: task.id} as any}
       onClick={onClick}
-      className={`group relative bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm cursor-pointer border-l-4 ${
-        task.status === 'todo' ? 'border-slate-400 dark:border-slate-600' :
-        task.status === 'inprogress' ? 'border-blue-500' : 'border-green-500'
-      } transition-all duration-200 hover:shadow-md hover:border-brand-500 ${isDragging ? 'shadow-xl rotate-1' : ''}`}
+      className={`group relative bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm cursor-pointer border-l-4 ${statusBorderColor} transition-all duration-200 hover:shadow-md hover:border-brand-500 ${isDragging ? 'shadow-xl rotate-1' : ''}`}
     >
       <div 
         {...dragHandleListeners}
@@ -76,12 +79,32 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandle
       </div>
 
       <div className="pr-6">
+        <div className="flex items-center gap-2 mb-2">
+            {categoryInfo && (
+                <Badge className={`!py-0.5 !px-2 !text-xs rounded-full ${categoryColorClasses}`}>
+                    <IconRenderer name={categoryInfo.icon} size={12} className="mr-1.5" />
+                    {categoryInfo.name}
+                </Badge>
+            )}
+            {moduleInfo && (
+                <Badge className="!py-0.5 !px-2 !text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                    <IconRenderer name={moduleInfo.icon} size={12} className="mr-1.5" />
+                    {moduleInfo.name}
+                </Badge>
+            )}
+        </div>
         <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{task.title}</p>
         <div className="flex items-center gap-1.5 flex-wrap mt-2">
-          {moduleInfo && (
-            <Badge className={`!py-0.5 !px-2 !text-xs rounded-full ${moduleColorClasses}`}>
-              <IconRenderer name={moduleInfo.icon} size={12} className="mr-1.5" />
-              {moduleInfo.name}
+          {task.subStatus === 'testing' && (
+            <Badge className="!py-0.5 !px-2 !text-xs bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-full">
+                <FlaskConical size={12} className="mr-1" />
+                Em Teste
+            </Badge>
+          )}
+          {task.subStatus === 'approved' && (
+            <Badge className="!py-0.5 !px-2 !text-xs bg-teal-500/20 text-teal-600 dark:text-teal-400 rounded-full">
+                <CheckCircle size={12} className="mr-1" />
+                Aprovado
             </Badge>
           )}
           {isBlocked && (
@@ -106,12 +129,6 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandle
                   <Link2 size={14} />
                   <span>{task.links!.length}</span>
               </div>
-          )}
-          {(task.dependsOn?.length ?? 0) > 0 && (
-            <div className="flex items-center gap-1" title={`${task.dependsOn!.length} ${task.dependsOn!.length > 1 ? 'dependências' : 'dependência'}`}>
-                <Lock size={14} />
-                <span>{task.dependsOn!.length}</span>
-            </div>
           )}
            {(totalTime > 0 || isTimerActiveForThisTask) && (
               <div className="flex items-center gap-1 font-mono" title={`Tempo total: ${formatDuration(totalTime)}`}>

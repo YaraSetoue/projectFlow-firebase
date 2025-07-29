@@ -20,8 +20,33 @@ import {
 } from "@firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "@firebase/storage";
 import { auth, db } from '../firebase/config';
-import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, Feature } from '../types';
+import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, TaskCategory, Feature, SubStatus, Activity } from '../types';
 import { getSeedData } from "../utils/seed";
+
+// --- Activity Logging ---
+
+export const logActivity = async (projectId: string, message: string, taskId?: string) => {
+    const user = auth.currentUser;
+    if (!user) return; 
+
+    const userSummary: UserSummary = {
+        uid: user.uid,
+        displayName: user.displayName,
+        photoURL: user.photoURL
+    };
+
+    const activityRef = collection(db, 'projects', projectId, 'activity');
+    const activityPayload: Omit<Activity, 'id'> = {
+        projectId,
+        message,
+        user: userSummary,
+        createdAt: serverTimestamp() as Timestamp,
+        ...(taskId && { taskId })
+    };
+    
+    await addDoc(activityRef, activityPayload);
+};
+
 
 // --- User Profile Functions ---
 
@@ -78,7 +103,7 @@ export const markNotificationAsRead = async (notificationId: string) => {
 // --- Project and Member/Invitation Functions ---
 
 export const createProject = async (name: string, description: string, user: User) => {
-    // A user must have a UID to be a project owner and member.
+    // A user must have a UID to be a project owner and a member.
     if (!user || !user.uid) {
       throw new Error("Um usuário autenticado e válido é necessário para criar um projeto.");
     }
@@ -166,6 +191,8 @@ export const acceptInvitation = async (invitation: Invitation) => {
     });
     batch.update(invitationRef, { status: 'accepted' });
     await batch.commit();
+
+    await logActivity(invitation.projectId, `${invitation.inviter.name} adicionou ${user.displayName} ao projeto.`);
 };
 
 export const declineInvitation = async (invitationId: string) => {
@@ -193,8 +220,35 @@ export const removeMemberFromProject = async (projectId: string, memberUid: stri
     });
 };
 
+// --- Task Category Functions ---
+export const createTaskCategory = async (projectId: string, data: Omit<TaskCategory, 'id' | 'projectId'>) => {
+    const categoriesRef = collection(db, 'projects', projectId, 'taskCategories');
+    const docRef = await addDoc(categoriesRef, { ...data, projectId });
+    return docRef.id;
+};
+
+export const updateTaskCategory = async (projectId:string, categoryId: string, data: Partial<Omit<TaskCategory, 'id' | 'projectId'>>) => {
+    const categoryRef = doc(db, 'projects', projectId, 'taskCategories', categoryId);
+    await updateDoc(categoryRef, data);
+};
+
+export const deleteTaskCategory = async (projectId: string, categoryId: string) => {
+    // Before deleting, check if any tasks use this category.
+    const tasksRef = collection(db, 'projects', projectId, 'tasks');
+    const q = query(tasksRef, where('categoryId', '==', categoryId));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+        throw new Error(`Não é possível excluir a categoria, pois ela está sendo usada por ${querySnapshot.size} tarefa(s).`);
+    }
+
+    const categoryRef = doc(db, 'projects', projectId, 'taskCategories', categoryId);
+    await deleteDoc(categoryRef);
+};
+
+
 // --- Task Functions ---
-export const createTask = async (projectId: string, projectName: string, taskData: Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId'>>) => {
+export const createTask = async (projectId: string, projectName: string, taskData: Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId' | 'categoryId'>>) => {
     const user = auth.currentUser;
     if (!user) throw new Error("Usuário não autenticado");
 
@@ -218,6 +272,8 @@ export const createTask = async (projectId: string, projectName: string, taskDat
     };
     
     const docRef = await addDoc(tasksRef, payload);
+
+    await logActivity(projectId, `${user.displayName} criou a tarefa "${payload.title}".`, docRef.id);
     
     // Send notification if assigned to someone else
     if (taskData.assignee && taskData.assignee.uid !== user.uid) {
@@ -230,9 +286,41 @@ export const createTask = async (projectId: string, projectName: string, taskDat
     }
 };
 
+const STATUS_LABELS: Record<TaskStatus, string> = { todo: 'A Fazer', inprogress: 'Em Andamento', done: 'Concluído' };
+const SUB_STATUS_LABELS: Record<SubStatus, string> = { executing: 'Executando', testing: 'Em Teste', approved: 'Aprovado' };
+
 export const updateTask = async (projectId: string, taskId: string, data: Partial<Task>) => {
+    const user = auth.currentUser;
     const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
-    await updateDoc(taskRef, { ...data, updatedAt: serverTimestamp() });
+
+    const taskDoc = await getDoc(taskRef);
+    if (!taskDoc.exists()) throw new Error("Tarefa não encontrada.");
+    const oldTask = taskDoc.data() as Task;
+
+    const payload: { [key: string]: any } = { ...data, updatedAt: serverTimestamp() };
+
+    // Ensure subStatus is only present when status is 'inprogress'
+    if (('status' in payload && payload.status !== 'inprogress') || ('subStatus' in payload && payload.subStatus === null)) {
+        payload.subStatus = deleteField();
+    }
+    
+    await updateDoc(taskRef, payload);
+
+    if (user?.displayName && data.status) {
+        const hasStatusChanged = data.status !== oldTask.status;
+        const hasSubStatusChanged = data.subStatus !== oldTask.subStatus;
+        
+        if (hasStatusChanged || hasSubStatusChanged) {
+            let statusText = '';
+            if (data.status === 'inprogress') {
+                statusText = SUB_STATUS_LABELS[data.subStatus || 'executing'];
+            } else {
+                statusText = STATUS_LABELS[data.status];
+            }
+             const message = `${user.displayName} moveu a tarefa "${oldTask.title}" para ${statusText}.`;
+             await logActivity(projectId, message, taskId);
+        }
+    }
 };
 
 export const deleteTask = async (projectId: string, taskId: string) => {
@@ -293,6 +381,8 @@ export const addTaskComment = async (
             }
         }
     });
+
+     await logActivity(projectId, `${userSummary.displayName} comentou na tarefa "${taskTitle}".`, taskId);
 };
 
 export const addLinkToTask = async (projectId: string, taskId: string, link: TaskLink) => {
@@ -392,6 +482,11 @@ export const createModule = async (projectId: string, moduleData: Pick<Module, '
     batch.set(docRef, { content: documentation, updatedAt: serverTimestamp() });
 
     await batch.commit();
+
+    const user = auth.currentUser;
+    if (user?.displayName) {
+        await logActivity(projectId, `${user.displayName} criou o módulo "${moduleData.name}".`);
+    }
 };
 
 export const updateModule = async (projectId: string, moduleId: string, moduleData: Partial<Module>, documentation: string) => {
@@ -515,7 +610,8 @@ export const seedDatabase = async (currentUser: User) => {
         relationshipsData, 
         tasksData, 
         mockUsers,
-        commentsData
+        commentsData,
+        taskCategoriesData,
     } = getSeedData(currentUser);
     
     const batch = writeBatch(db);
@@ -549,7 +645,18 @@ export const seedDatabase = async (currentUser: User) => {
         batch.set(docRef, { content: module.documentation, updatedAt: serverTimestamp() });
     }
 
-    // 4. Create Entities, storing their IDs
+    // 4. Create Task Categories, storing their IDs
+    const categoryNameToIdMap = new Map<string, string>();
+    for (const category of taskCategoriesData) {
+        const categoryRef = doc(collection(db, 'projects', projectId, 'taskCategories'));
+        batch.set(categoryRef, {
+            ...category,
+            projectId,
+        });
+        categoryNameToIdMap.set(category.name, categoryRef.id);
+    }
+
+    // 5. Create Entities, storing their IDs
     const entityNameToIdMap = new Map<string, string>();
     for (const entity of entitiesData) {
         const entityRef = doc(collection(db, 'projects', projectId, 'entities'));
@@ -563,7 +670,7 @@ export const seedDatabase = async (currentUser: User) => {
         entityNameToIdMap.set(entity.name, entityRef.id);
     }
     
-    // 5. Create Relationships using stored IDs
+    // 6. Create Relationships using stored IDs
     for (const rel of relationshipsData) {
         const sourceEntityId = entityNameToIdMap.get(rel.sourceEntityName);
         const targetEntityId = entityNameToIdMap.get(rel.targetEntityName);
@@ -580,18 +687,26 @@ export const seedDatabase = async (currentUser: User) => {
         }
     }
     
-    // 6. Create Tasks, linking to modules using stored IDs
+    // 7. Create Tasks, linking to modules and categories using stored IDs
     const taskIndexToIdMap = new Map<number, string>();
     for (let i = 0; i < tasksData.length; i++) {
         const task = tasksData[i];
         const taskRef = doc(collection(db, 'projects', projectId, 'tasks'));
         taskIndexToIdMap.set(i, taskRef.id);
         const moduleId = moduleNameToIdMap.get(task.moduleName);
+        const categoryId = categoryNameToIdMap.get(task.categoryName);
+        
+        if (!categoryId) {
+            console.warn(`Seed task "${task.title}" has no valid category. Skipping.`);
+            continue;
+        }
+
         const taskPayload: Omit<Task, 'id' | 'createdAt' | 'updatedAt'> = {
             projectId,
             title: task.title,
             description: task.description,
             status: task.status,
+            subStatus: task.subStatus,
             assignee: task.assignee,
             commentsCount: task.commentsCount,
             dueDate: task.dueDate || null,
@@ -599,6 +714,7 @@ export const seedDatabase = async (currentUser: User) => {
             links: [],
             timeLogs: [],
             moduleId: moduleId,
+            categoryId: categoryId,
             // featureId is not part of seed data, so it will be undefined
         };
         batch.set(taskRef, {
@@ -608,7 +724,7 @@ export const seedDatabase = async (currentUser: User) => {
         });
     }
 
-    // 7. Create Comments, linking to tasks using stored IDs
+    // 8. Create Comments, linking to tasks using stored IDs
     for (const commentGroup of commentsData) {
         const taskId = taskIndexToIdMap.get(commentGroup.taskId);
         if (taskId) {
