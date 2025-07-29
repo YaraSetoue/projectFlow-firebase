@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactQuill from 'react-quill';
 import { createModule, updateModule, getModuleDocumentation } from '../../services/firestoreService';
-import { Module, Entity } from '../../types';
+import { Module } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import Popover from '../ui/Popover';
 import IconRenderer from '../ui/IconRenderer';
-import { Loader2, Database, Check, ChevronDown, X } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { MODULE_ICON_OPTIONS, MODULE_COLOR_OPTIONS, MODULE_COLOR_MAP } from '../../utils/styleUtils';
 
 
@@ -18,24 +18,21 @@ interface CreateEditModuleModalProps {
   projectId: string;
   module: Module | null;
   onSuccess: () => void;
-  entities: Entity[];
 }
 
 const QuillEditor = React.memo(ReactQuill);
 
-const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, onClose, projectId, module, onSuccess, entities }) => {
+const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, onClose, projectId, module, onSuccess }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('module');
   const [color, setColor] = useState('gray');
   const [documentation, setDocumentation] = useState('');
-  const [relatedEntityIds, setRelatedEntityIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'general' | 'documentation'>('general');
   
   const [isLoading, setIsLoading] = useState(false);
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isEntityPopoverOpen, setIsEntityPopoverOpen] = useState(false);
   const [isIconPopoverOpen, setIsIconPopoverOpen] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +46,6 @@ const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, o
             setDescription(module.description);
             setIcon(module.icon || 'module');
             setColor(module.color || 'gray');
-            setRelatedEntityIds(module.relatedEntityIds || []);
             setIsDocLoading(true);
             getModuleDocumentation(projectId, module.id)
                 .then(setDocumentation)
@@ -65,7 +61,6 @@ const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, o
             setDocumentation('');
             setIcon('module');
             setColor('gray');
-            setRelatedEntityIds([]);
         }
         setActiveTab('general'); // Reset to general tab whenever modal opens/module changes
     }
@@ -76,18 +71,6 @@ const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, o
       setTimeout(() => nameInputRef.current?.focus(), 150); // Timeout for modal animation
     }
   }, [isOpen, activeTab, isLoading, isEditing]);
-
-  const selectedEntities = useMemo(() => {
-    const selectedIds = new Set(relatedEntityIds || []);
-    return entities.filter(entity => selectedIds.has(entity.id));
-  }, [relatedEntityIds, entities]);
-
-  const handleEntityToggle = (entityId: string) => {
-    const newIds = relatedEntityIds.includes(entityId)
-      ? relatedEntityIds.filter(id => id !== entityId)
-      : [...relatedEntityIds, entityId];
-    setRelatedEntityIds(newIds);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +87,7 @@ const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, o
     setIsLoading(true);
 
     try {
-        const moduleData = { name, description, icon, color, relatedEntityIds };
+        const moduleData = { name, description, icon, color };
         if (isEditing) {
             await updateModule(projectId, module.id, moduleData, documentation);
         } else {
@@ -236,65 +219,6 @@ const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, o
                                 ></button>
                             ))}
                         </div>
-                      </div>
-
-                       <div>
-                          <label htmlFor="relatedEntities" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                              Entidades Associadas
-                          </label>
-                          <Popover
-                            isOpen={isEntityPopoverOpen}
-                            onClose={() => setIsEntityPopoverOpen(false)}
-                            trigger={
-                                <Button 
-                                type="button" 
-                                variant="outline" 
-                                className="w-full justify-between text-left font-normal h-auto min-h-[40px] py-1 px-2"
-                                onClick={() => setIsEntityPopoverOpen(true)}
-                                disabled={isLoading}
-                                >
-                                <div className="flex flex-wrap gap-1">
-                                    {selectedEntities.length > 0 ? (
-                                    selectedEntities.map(entity => (
-                                        <span key={entity.id} className="flex items-center gap-1 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full text-xs">
-                                        {entity.name}
-                                        <button 
-                                            type="button" 
-                                            className="ml-1.5 -mr-1 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/20"
-                                            onClick={(e) => { e.stopPropagation(); handleEntityToggle(entity.id); }}
-                                        >
-                                            <X size={12} />
-                                        </button>
-                                        </span>
-                                    ))
-                                    ) : (
-                                    <span className="text-slate-500">Selecione as entidades...</span>
-                                    )}
-                                </div>
-                                <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0 ml-2" />
-                                </Button>
-                            }
-                            >
-                            <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                {entities.length > 0 ? (
-                                entities.map(entity => (
-                                    <div
-                                    key={entity.id}
-                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm"
-                                    onClick={() => handleEntityToggle(entity.id)}
-                                    >
-                                    <span className="flex items-center gap-2">
-                                        <Database size={14} />
-                                        <span className="truncate">{entity.name}</span>
-                                    </span>
-                                    {relatedEntityIds.includes(entity.id) && <Check className="h-4 w-4 text-brand-500" />}
-                                    </div>
-                                ))
-                                ) : (
-                                <div className="p-2 text-sm text-center text-slate-500">Nenhuma entidade criada neste projeto.</div>
-                                )}
-                            </div>
-                            </Popover>
                       </div>
                   </div>
               </div>

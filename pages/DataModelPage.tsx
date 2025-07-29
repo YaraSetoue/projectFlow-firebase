@@ -190,7 +190,6 @@ const DataModelPage = () => {
                                     key={entity.id} 
                                     entity={entity}
                                     allTasks={tasks || []}
-                                    allModules={modules || []}
                                     onEdit={() => handleOpenEditEntity(entity)}
                                     isEditor={isEditor}
                                 />

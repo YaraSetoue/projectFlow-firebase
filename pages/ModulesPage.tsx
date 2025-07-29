@@ -62,13 +62,6 @@ const ModulesPage = () => {
         [projectId]
     );
     const { data: tasks, loading: tasksLoading } = useFirestoreQuery<Task>(tasksQuery);
-    
-    // Query all entities for association in modal
-    const entitiesQuery = useMemo(() =>
-        query(collection(db, 'projects', projectId, 'entities'), orderBy('name', 'asc')),
-        [projectId]
-    );
-    const { data: entities, loading: entitiesLoading } = useFirestoreQuery<Entity>(entitiesQuery);
 
     const handleOpenCreateModal = () => {
         setEditingModule(null);
@@ -89,7 +82,7 @@ const ModulesPage = () => {
         handleCloseModal();
     };
 
-    const loading = modulesLoading || tasksLoading || entitiesLoading;
+    const loading = modulesLoading || tasksLoading;
 
     return (
         <motion.div
@@ -160,7 +153,6 @@ const ModulesPage = () => {
                         projectId={projectId}
                         module={editingModule}
                         onSuccess={handleModuleSaveSuccess}
-                        entities={entities || []}
                     />
                 )}
             </AnimatePresence>

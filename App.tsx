@@ -17,6 +17,7 @@ import { NetworkStatusProvider } from './contexts/NetworkStatusContext';
 import NetworkStatusIndicator from './components/NetworkStatusIndicator';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ModulesPage from './pages/ModulesPage';
+import FeaturesPage from './pages/FeaturesPage';
 import DataModelPage from './pages/DataModelPage';
 import ProjectReportsPage from './pages/ProjectReportsPage';
 import MembersPage from './pages/MembersPage';
@@ -47,6 +48,7 @@ const AppRouter = () => (
           <Route path="/project/:projectId" element={<ProjectLayout />}>
               <Route index element={<ProjectDetailPage />} />
               <Route path="modules" element={<ModulesPage />} />
+              <Route path="features" element={<FeaturesPage />} />
               <Route path="datamodel" element={<DataModelPage />} />
               <Route path="credentials" element={<CredentialsPage />} />
               <Route path="members" element={<MembersPage />} />

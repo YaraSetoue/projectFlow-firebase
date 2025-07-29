@@ -99,7 +99,6 @@ export interface Module {
     name: string;
     description: string;
     createdAt: Timestamp;
-    relatedEntityIds?: string[];
     icon?: string;
     color?: string;
 }
@@ -128,10 +127,10 @@ export interface Task {
   dueDate?: Timestamp | null;
   commentsCount?: number;
   dependsOn?: string[]; // Array of task IDs this task is blocked by
+  featureId?: string;
   moduleId?: string;
   timeLogs?: TimeLog[];
   links?: TaskLink[];
-  relatedEntityIds?: string[];
 }
 
 export interface Comment {
@@ -193,4 +192,31 @@ export interface Credential {
   iv: string; // Initialization Vector
   createdAt: Timestamp;
   createdBy: string; // UID
+}
+
+// --- Feature Types ---
+
+export interface UserFlow {
+  id: string;
+  step: number;
+  description: string;
+  relatedEntityIds?: string[];
+}
+
+export interface TestCase {
+  id: string;
+  description: string;
+  expectedResult: string;
+  status: 'pending' | 'passed' | 'failed';
+}
+
+export interface Feature {
+  id: string;
+  projectId: string;
+  name: string;
+  moduleId: string;
+  description: string;
+  userFlows: UserFlow[];
+  testCases: TestCase[];
+  createdAt: Timestamp;
 }

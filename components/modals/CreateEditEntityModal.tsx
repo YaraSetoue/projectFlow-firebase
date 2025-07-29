@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createEntity, updateEntity } from '../../services/firestoreService';
 import { Entity, Attribute, DATA_TYPES, DataType, Module } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
-import { Loader2, PlusCircle, Trash2 } from 'lucide-react';
-import MultiSelectPopover from '../ui/MultiSelectPopover';
+import { Loader2, PlusCircle, Trash2, Boxes } from 'lucide-react';
+import Badge from '../ui/Badge';
 
 interface CreateEditEntityModalProps {
   isOpen: boolean;
@@ -20,24 +20,21 @@ const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, o
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [attributes, setAttributes] = useState<Attribute[]>([]);
-  const [relatedModuleIds, setRelatedModuleIds] = useState<string[]>([]);
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   const isEditing = entity !== null;
-
+  
   useEffect(() => {
     if (entity) {
         setName(entity.name);
         setDescription(entity.description);
         setAttributes(entity.attributes || []);
-        setRelatedModuleIds(entity.relatedModuleIds || []);
     } else {
         setName('');
         setDescription('');
         setAttributes([]);
-        setRelatedModuleIds([]);
     }
   }, [entity, isOpen]);
   
@@ -81,11 +78,11 @@ const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, o
     setIsLoading(true);
 
     try {
-        const entityData = { name, description, attributes, relatedModuleIds };
+        const entityData = { name, description, attributes };
         if (isEditing) {
             await updateEntity(projectId, entity.id, entityData);
         } else {
-            await createEntity(projectId, entityData);
+            await createEntity(projectId, { ...entityData, relatedModuleIds: [], relatedTaskIds: [] });
         }
         handleClose();
     } catch (err: any) {
@@ -99,25 +96,12 @@ const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, o
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={isEditing ? 'Editar Entidade' : 'Criar Nova Entidade'}>
         <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1">
                 <div>
                     <label htmlFor="entityName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                         Nome da Entidade
                     </label>
                     <Input id="entityName" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Usuário" required disabled={isLoading} />
-                </div>
-                 <div>
-                    <label htmlFor="relatedModules" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        Módulos Associados
-                    </label>
-                    <MultiSelectPopover 
-                        items={modules}
-                        selectedIds={relatedModuleIds}
-                        onSelectedIdsChange={setRelatedModuleIds}
-                        placeholder="Associar módulos..."
-                        displayProperty="name"
-                        disabled={isLoading}
-                    />
                 </div>
             </div>
             <div>

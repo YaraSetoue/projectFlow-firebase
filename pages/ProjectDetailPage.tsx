@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { collection, query, orderBy, where, getDocs } from '@firebase/firestore';
-import { PlusCircle, Settings, Loader2, LayoutGrid, List, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { PlusCircle, Settings, Loader2, LayoutGrid, List } from 'lucide-react';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
 import { Task, Member, Module, User, Entity, TaskStatus } from '../types';
@@ -17,51 +17,6 @@ import ProjectSettingsModal from '../components/modals/ProjectSettingsModal';
 import ConnectionErrorState from '../components/ui/ConnectionErrorState';
 import { useProject } from '../contexts/ProjectContext';
 import { useAuth } from '../hooks/useAuth';
-
-interface PaginationControlsProps {
-    currentPage: number;
-    totalPages: number;
-    itemsPerPage: number;
-    onPageChange: (page: number) => void;
-    onItemsPerPageChange: (items: number) => void;
-}
-
-const PaginationControls: React.FC<PaginationControlsProps> = ({
-  currentPage,
-  totalPages,
-  itemsPerPage,
-  onPageChange,
-  onItemsPerPageChange,
-}) => {
-  return (
-    <footer className="flex items-center justify-between py-3 px-4 sm:px-6 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-        <div className="flex items-center gap-2">
-            <span>Itens por página:</span>
-            <select
-                value={itemsPerPage}
-                onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-                className="h-8 text-sm rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
-            >
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-            </select>
-        </div>
-        <div>
-            <span>Página </span>
-            <span className="font-medium">{currentPage}</span>
-            <span> de </span>
-            <span className="font-medium">{totalPages}</span>
-        </div>
-        <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => onPageChange(1)} disabled={currentPage === 1} aria-label="Primeira página"><ChevronsLeft className="h-4 w-4"/></Button>
-            <Button variant="ghost" size="icon" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} aria-label="Página anterior"><ChevronLeft className="h-4 w-4"/></Button>
-            <Button variant="ghost" size="icon" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} aria-label="Próxima página"><ChevronRight className="h-4 w-4"/></Button>
-            <Button variant="ghost" size="icon" onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} aria-label="Última página"><ChevronsRight className="h-4 w-4"/></Button>
-        </div>
-    </footer>
-  );
-};
 
 const ViewSwitcher = ({ viewMode, setViewMode }: { viewMode: 'board' | 'list', setViewMode: (mode: 'board' | 'list') => void }) => (
     <div className="flex items-center p-1 bg-slate-200 dark:bg-slate-800 rounded-lg">
@@ -156,6 +111,7 @@ const ProjectDetailPage = () => {
     const [projectMembers, setProjectMembers] = useState<Member[]>([]);
     const [membersLoading, setMembersLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+    const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedModuleId = searchParams.get('module') || 'all';
@@ -257,7 +213,7 @@ const ProjectDetailPage = () => {
         }
     };
 
-    const filteredTasks = useMemo(() => {
+    const moduleFilteredTasks = useMemo(() => {
         if (!tasks) return [];
         
         // The 'none' case is the only one needing client-side filtering,
@@ -271,6 +227,16 @@ const ProjectDetailPage = () => {
         return tasks;
     }, [tasks, selectedModuleId]);
 
+    const filteredTasks = useMemo(() => {
+        if (!moduleFilteredTasks) return [];
+
+        if (statusFilter === 'all') {
+            return moduleFilteredTasks;
+        }
+
+        return moduleFilteredTasks.filter(task => task.status === statusFilter);
+    }, [moduleFilteredTasks, statusFilter]);
+
     const moduleLookup = useMemo(() => {
         const lookup: Record<string, Module> = {};
         if (modules) {
@@ -282,17 +248,8 @@ const ProjectDetailPage = () => {
     }, [modules]);
     
     // State and logic for TaskListView
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
     const { sortedTasks, requestSort, sortConfig } = useTaskSorter(filteredTasks, projectMembers);
     
-    const totalPages = Math.ceil(sortedTasks.length / itemsPerPage);
-
-    const paginatedTasks = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return sortedTasks.slice(startIndex, startIndex + itemsPerPage);
-    }, [sortedTasks, currentPage, itemsPerPage]);
-
     const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading;
 
     return (
@@ -311,19 +268,33 @@ const ProjectDetailPage = () => {
                      <ViewSwitcher viewMode={viewMode} setViewMode={setViewMode} />
                 </div>
                 <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <select
-                        id="module-filter"
-                        value={selectedModuleId}
-                        onChange={(e) => setSearchParams({ module: e.target.value })}
-                        className="w-full sm:w-auto h-9 px-3 rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                        disabled={modulesLoading}
-                    >
-                        <option value="all">Todos os Módulos</option>
-                        <option value="none">Tarefas sem Módulo</option>
-                        {modules?.map(module => (
-                            <option key={module.id} value={module.id}>{module.name}</option>
-                        ))}
-                    </select>
+                    <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                        <select
+                            id="module-filter"
+                            value={selectedModuleId}
+                            onChange={(e) => setSearchParams({ module: e.target.value })}
+                            className="w-full sm:w-auto h-9 px-3 rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                            disabled={modulesLoading}
+                        >
+                            <option value="all">Todos os Módulos</option>
+                            <option value="none">Tarefas sem Módulo</option>
+                            {modules?.map(module => (
+                                <option key={module.id} value={module.id}>{module.name}</option>
+                            ))}
+                        </select>
+                        <select
+                            id="status-filter"
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value as 'all' | TaskStatus)}
+                            className="w-full sm:w-auto h-9 px-3 rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                            disabled={loading}
+                        >
+                            <option value="all">Todos os Status</option>
+                            <option value="todo">A Fazer</option>
+                            <option value="inprogress">Em Andamento</option>
+                            <option value="done">Concluído</option>
+                        </select>
+                    </div>
                     <div className="flex items-center gap-2">
                         <Button 
                             onClick={() => setCreateTaskModalOpen(true)} 
@@ -348,18 +319,18 @@ const ProjectDetailPage = () => {
                 </div>
             </header>
             
-            <main className="flex-grow px-4 sm:px-6 lg:px-8 pb-8">
+            <main className="flex-grow">
                  {loading ? (
-                    <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-brand-500" /></div>
+                    <div className="flex justify-center items-center py-10 px-4 sm:px-6 lg:px-8"><Loader2 className="h-8 w-8 animate-spin text-brand-500" /></div>
                  ) : tasksError ? (
-                    <ConnectionErrorState error={tasksError} context="tarefas do projeto" />
+                    <div className="p-4 sm:p-6 lg:p-8"><ConnectionErrorState error={tasksError} context="tarefas do projeto" /></div>
                  ) : viewMode === 'board' ? (
-                     <KanbanBoard tasks={filteredTasks} loading={loading} projectId={projectId} onTaskClick={setSelectedTask} error={tasksError} moduleLookup={moduleLookup}/>
+                     <div className="px-4 sm:px-6 lg:px-8 pb-8 h-full"><KanbanBoard tasks={filteredTasks} loading={loading} projectId={projectId} onTaskClick={setSelectedTask} error={tasksError} moduleLookup={moduleLookup}/></div>
                 ) : (
                     sortedTasks.length > 0 ? (
-                        <div className="pt-6">
+                        <div className="pt-6 px-4 sm:px-6 lg:px-8 pb-8">
                             <TaskListView 
-                                tasks={paginatedTasks}
+                                tasks={sortedTasks}
                                 onTaskClick={setSelectedTask} 
                                 moduleLookup={moduleLookup}
                                 projectMembers={projectMembers}
@@ -370,25 +341,11 @@ const ProjectDetailPage = () => {
                             />
                         </div>
                     ) : (
-                         <p className="text-center text-slate-500 py-10">Nenhuma tarefa encontrada para os filtros selecionados.</p>
+                         <p className="text-center text-slate-500 py-10 px-4 sm:px-6 lg:px-8">Nenhuma tarefa encontrada para os filtros selecionados.</p>
                     )
                 )}
             </main>
 
-            {viewMode === 'list' && totalPages > 1 && (
-                <div className="flex-shrink-0">
-                    <PaginationControls
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        itemsPerPage={itemsPerPage}
-                        onPageChange={setCurrentPage}
-                        onItemsPerPageChange={(value) => {
-                            setItemsPerPage(value);
-                            setCurrentPage(1);
-                        }}
-                    />
-                </div>
-            )}
             
             {isCreateTaskModalOpen && (
                 <CreateTaskModal

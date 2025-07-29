@@ -23,6 +23,7 @@ const Breadcrumbs = () => {
         'account': 'Minha Conta',
         'project': 'Projeto',
         'modules': 'Módulos',
+        'features': 'Funcionalidades',
         'datamodel': 'Modelo de Dados',
         'credentials': 'Credenciais',
         'members': 'Membros',

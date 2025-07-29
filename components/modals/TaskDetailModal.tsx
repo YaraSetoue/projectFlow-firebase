@@ -7,7 +7,7 @@ import { db } from '../../firebase/config';
 import { updateTask, addTaskComment, sendNotification, deleteTask, addLinkToTask, removeLinkFromTask, updateLinkInTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
 import { useTimeTracking, formatDuration } from '../../utils/placeholder';
-import { Task, UserSummary, Comment, Module, TimeLog, Project, Member, TaskLink, Entity, TaskStatus } from '../../types';
+import { Task, UserSummary, Comment, Module, TimeLog, Project, Member, TaskLink, Entity, TaskStatus, Feature } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -15,7 +15,7 @@ import Textarea from '../ui/Textarea';
 import Avatar from '../ui/Avatar';
 import Popover from '../ui/Popover';
 import AlertDialog from '../ui/AlertDialog';
-import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save } from 'lucide-react';
+import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save, Shapes } from 'lucide-react';
 import Badge from '../ui/Badge';
 import ReactQuill from 'react-quill';
 import IconRenderer from '../ui/IconRenderer';
@@ -106,8 +106,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     // Popover states
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
-    const [isModuleOpen, setIsModuleOpen] = useState(false);
-    const [isEntityPopoverOpen, setIsEntityPopoverOpen] = useState(false);
 
     // Link states
     const [showLinkForm, setShowLinkForm] = useState(false);
@@ -158,6 +156,24 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
         [projectId, taskId]
     );
     const { data: comments, loading: commentsLoading, error: commentsError } = useFirestoreQuery<Comment>(commentsQuery);
+
+    const featuresQuery = useMemo(() =>
+        query(collection(db, 'projects', projectId, 'features'), orderBy('name', 'asc')),
+        [projectId]
+    );
+    const { data: features } = useFirestoreQuery<Feature>(featuresQuery);
+
+    const featuresByModule = useMemo(() => {
+        if (!features || !modules) return {};
+        return features.reduce((acc, feature) => {
+            (acc[feature.moduleId] = acc[feature.moduleId] || []).push(feature);
+            return acc;
+        }, {} as Record<string, Feature[]>);
+    }, [features, modules]);
+
+    const relatedFeature = useMemo(() =>
+        realTimeTask?.featureId && features ? features.find(f => f.id === realTimeTask.featureId) : null,
+    [realTimeTask, features]);
     
     const availableTasksForDependency = useMemo(() => {
         if (!realTimeTask) return [];
@@ -167,21 +183,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
 
     const dependencies = useMemo(() => (realTimeTask?.dependsOn || []).map(depId => allTasks.find(t => t.id === depId)).filter(Boolean) as Task[], [realTimeTask?.dependsOn, allTasks]);
     
-    const getSelectedEntities = (task: Task | null) => {
-        if (!task) return [];
-        const selectedIds = new Set(task.relatedEntityIds || []);
-        return entities.filter(entity => selectedIds.has(entity.id));
-    };
-
-    const handleEntityToggle = (entityId: string) => {
-        if (!editedTask) return;
-        const currentIds = editedTask.relatedEntityIds || [];
-        const newIds = currentIds.includes(entityId)
-          ? currentIds.filter(id => id !== entityId)
-          : [...currentIds, entityId];
-        setEditedTask({ ...editedTask, relatedEntityIds: newIds });
-    };
-
     const totalTime = useMemo(() => {
         return (realTimeTask?.timeLogs || []).reduce((acc, log) => acc + log.durationInSeconds, 0);
     }, [realTimeTask?.timeLogs]);
@@ -239,14 +240,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                 title: editedTask.title,
                 description: editedTask.description,
                 assignee: editedTask.assignee || null,
-                relatedEntityIds: (editedTask.relatedEntityIds || []).filter(Boolean),
                 dueDate: editedTask.dueDate || null,
                 status: editedTask.status,
             };
 
-            if (editedTask.moduleId) {
-                updatePayload.moduleId = editedTask.moduleId;
+            if (editedTask.featureId) {
+                updatePayload.featureId = editedTask.featureId;
+                const feature = features?.find(f => f.id === editedTask.featureId);
+                if (feature) {
+                    updatePayload.moduleId = feature.moduleId;
+                }
             } else {
+                updatePayload.featureId = deleteField();
                 updatePayload.moduleId = deleteField();
             }
             
@@ -701,39 +706,37 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                         )}
                     </PropertyBlock>
 
-                    <PropertyBlock label="Módulo">
-                        {isEditing ? (
-                             <Popover isOpen={isModuleOpen} onClose={() => setIsModuleOpen(false)} trigger={
-                                <Button type="button" variant="outline" className="w-full justify-between text-left" onClick={() => setIsModuleOpen(!isModuleOpen)} disabled={!isEditor}>
-                                    <span className="truncate">{modules.find(m => m.id === editedTask.moduleId)?.name || 'Nenhum'}</span>
-                                    <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                                </Button>
-                            }>
-                                <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                    <div className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask({ ...editedTask, moduleId: '' }); setIsModuleOpen(false); }}>
-                                        Nenhum
-                                        {(!editedTask.moduleId || editedTask.moduleId === '') && <Check className="h-4 w-4 text-brand-500" />}
-                                    </div>
-                                    {modules.map(module => (
-                                        <div key={module.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask({ ...editedTask, moduleId: module.id }); setIsModuleOpen(false); }}>
-                                            <span className="truncate">{module.name}</span>
-                                            {editedTask.moduleId === module.id && <Check className="h-4 w-4 text-brand-500" />}
-                                        </div>
-                                    ))}
-                                </div>
-                            </Popover>
-                        ) : (
+                    <PropertyBlock label="Funcionalidade Relacionada">
+                         {isEditing ? (
+                            <select
+                                className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                                value={editedTask.featureId || ''}
+                                onChange={e => setEditedTask({ ...editedTask, featureId: e.target.value })}
+                                disabled={!isEditor || !features}
+                            >
+                                <option value="">Nenhuma Funcionalidade</option>
+                                {modules.map(module => (
+                                    (featuresByModule[module.id] && featuresByModule[module.id].length > 0) && (
+                                    <optgroup key={module.id} label={`Módulo: ${module.name}`}>
+                                        {featuresByModule[module.id].map(feature => (
+                                        <option key={feature.id} value={feature.id}>{feature.name}</option>
+                                        ))}
+                                    </optgroup>
+                                    )
+                                ))}
+                            </select>
+                         ) : (
                              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                                {realTimeTask.moduleId && modules.find(m => m.id === realTimeTask.moduleId) ? (
+                                {relatedFeature ? (
                                     <>
-                                        <IconRenderer name={modules.find(m => m.id === realTimeTask.moduleId)?.icon} size={16} />
-                                        <span>{modules.find(m => m.id === realTimeTask.moduleId)?.name}</span>
+                                        <Shapes size={16}/>
+                                        <span>{relatedFeature.name}</span>
                                     </>
                                 ) : (
-                                    <span className="text-slate-500 dark:text-slate-400">Nenhum</span>
+                                    <span className="text-slate-500 dark:text-slate-400">Nenhuma</span>
                                 )}
                             </div>
-                        )}
+                         )}
                     </PropertyBlock>
                     
                     <PropertyBlock label="Data de Entrega">
@@ -778,56 +781,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                                 )}
                             </div>
                         </div>
-                    </PropertyBlock>
-                    
-                     <PropertyBlock label="Entidades Afetadas">
-                        {isEditing ? (
-                             <Popover
-                                isOpen={isEntityPopoverOpen}
-                                onClose={() => setIsEntityPopoverOpen(false)}
-                                trigger={
-                                    <Button 
-                                    type="button" variant="outline" className="w-full justify-between text-left font-normal h-auto min-h-[40px] py-1 px-2"
-                                    onClick={() => setIsEntityPopoverOpen(true)} disabled={!isEditor}
-                                    >
-                                    <div className="flex flex-wrap gap-1">
-                                        {getSelectedEntities(editedTask).length > 0 ? (
-                                        getSelectedEntities(editedTask).map(entity => (
-                                            <span key={entity.id} className="flex items-center gap-1 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full text-xs">
-                                            {entity.name}
-                                            {isEditor && <button type="button" className="ml-1.5 -mr-1 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/20" onClick={(e) => { e.stopPropagation(); handleEntityToggle(entity.id); }}>
-                                                <X size={12} />
-                                            </button>}
-                                            </span>
-                                        ))
-                                        ) : ( <span className="text-slate-500">Nenhuma</span> )}
-                                    </div>
-                                    {isEditor && <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0 ml-2" />}
-                                    </Button>
-                                }>
-                                <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                    {entities.length > 0 ? entities.map(entity => (
-                                        <div key={entity.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => handleEntityToggle(entity.id)}>
-                                            <span className="flex items-center gap-2"><Database size={14} /><span className="truncate">{entity.name}</span></span>
-                                            {(editedTask.relatedEntityIds || []).includes(entity.id) && <Check className="h-4 w-4 text-brand-500" />}
-                                        </div>
-                                    )) : <div className="p-2 text-sm text-center text-slate-500">Nenhuma entidade criada.</div>}
-                                </div>
-                            </Popover>
-                        ) : (
-                             <div className="flex flex-wrap gap-1">
-                                {getSelectedEntities(realTimeTask).length > 0 ? (
-                                    getSelectedEntities(realTimeTask).map(entity => (
-                                        <Badge key={entity.id} className="bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300">
-                                            <Database size={12} className="mr-1.5" />
-                                            {entity.name}
-                                        </Badge>
-                                    ))
-                                ) : (
-                                    <span className="text-sm text-slate-500 dark:text-slate-400">Nenhuma</span>
-                                )}
-                            </div>
-                        )}
                     </PropertyBlock>
 
                     {isEditor && (

@@ -2,8 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 // @ts-ignore
 import { useNavigate } from 'react-router-dom';
-import { Entity, Task, Module } from '../types';
-import { Database, Trash2, Pencil, Loader2, AlertTriangle, CheckSquare, Square, Boxes, Check, Link as LinkIcon } from 'lucide-react';
+import { Entity, Task } from '../types';
+import { Database, Trash2, Pencil, Loader2, AlertTriangle, Check, Link as LinkIcon } from 'lucide-react';
 import Button from './ui/Button';
 import AlertDialog from './ui/AlertDialog';
 import { deleteEntity } from '../services/firestoreService';
@@ -11,7 +11,6 @@ import { deleteEntity } from '../services/firestoreService';
 interface EntityCardProps {
   entity: Entity;
   allTasks: Task[];
-  allModules: Module[];
   onEdit: () => void;
   isEditor: boolean;
 }
@@ -33,20 +32,23 @@ const TabButton = ({ isActive, onClick, children }: { isActive: boolean; onClick
 );
 
 
-const EntityCard = ({ entity, allTasks, allModules, onEdit, isEditor }: EntityCardProps) => {
+const EntityCard = ({ entity, allTasks, onEdit, isEditor }: EntityCardProps) => {
     const navigate = useNavigate();
     const [isDeleting, setIsDeleting] = useState(false);
     const [error, setError] = useState('');
     const [isAlertOpen, setAlertOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'attributes' | 'tasks' | 'modules'>('attributes');
+    const [activeTab, setActiveTab] = useState<'attributes' | 'tasks'>('attributes');
 
-    const relatedTasks = useMemo(() => 
-        allTasks.filter(task => entity.relatedTaskIds?.includes(task.id)),
-    [allTasks, entity.relatedTaskIds]);
+    const relatedTasks = useMemo(() => {
+        if (!entity.id || !allTasks) return [];
+        return allTasks.filter(task => {
+            // This is a placeholder for the new logic. The task model no longer has direct entity IDs.
+            // This will need to be updated once features are fully integrated.
+            // For now, it will likely show 0 tasks.
+            return false; 
+        });
+    }, [allTasks, entity.id]);
 
-    const relatedModules = useMemo(() =>
-        allModules.filter(module => entity.relatedModuleIds?.includes(module.id)),
-    [allModules, entity.relatedModuleIds]);
 
     const handleConfirmDelete = async () => {
         setIsDeleting(true);
@@ -101,7 +103,6 @@ const EntityCard = ({ entity, allTasks, allModules, onEdit, isEditor }: EntityCa
                 <div className="flex items-center gap-2 mb-4 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
                     <TabButton isActive={activeTab === 'attributes'} onClick={() => setActiveTab('attributes')}>Atributos ({entity.attributes.length})</TabButton>
                     <TabButton isActive={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')}>Tarefas ({relatedTasks.length})</TabButton>
-                    <TabButton isActive={activeTab === 'modules'} onClick={() => setActiveTab('modules')}>Módulos ({relatedModules.length})</TabButton>
                 </div>
                 
                 <div className="flex-grow min-h-[100px]">
@@ -121,7 +122,7 @@ const EntityCard = ({ entity, allTasks, allModules, onEdit, isEditor }: EntityCa
                                             <td className="px-4 py-2 font-medium text-slate-900 dark:text-white" title={attr.description}>{attr.name}</td>
                                             <td className="px-4 py-2 text-slate-500 dark:text-slate-400">{attr.dataType}</td>
                                             <td className="px-4 py-2 text-center text-brand-500">
-                                                {attr.isRequired ? <CheckSquare size={16} className="inline-block"/> : <Square size={16} className="inline-block opacity-30"/>}
+                                                {attr.isRequired ? <Check className="inline-block h-4 w-4"/> : <div className="inline-block h-4 w-4 border border-slate-400 rounded-sm"></div>}
                                             </td>
                                         </tr>
                                     ))}
@@ -140,15 +141,6 @@ const EntityCard = ({ entity, allTasks, allModules, onEdit, isEditor }: EntityCa
                                     <LinkIcon className="h-4 w-4 text-slate-400"/>
                                 </div>
                              )) : <p className="text-center text-xs text-slate-500 py-4">Nenhuma tarefa relacionada.</p>}
-                        </div>
-                    )}
-                    {activeTab === 'modules' && (
-                        <div className="space-y-2">
-                             {relatedModules.length > 0 ? relatedModules.map(module => (
-                                <div key={module.id} className="p-2 rounded-md bg-slate-50 dark:bg-slate-800/50">
-                                    <span className="truncate flex items-center gap-2"><Boxes className="h-4 w-4 text-purple-500"/> {module.name}</span>
-                                </div>
-                             )) : <p className="text-center text-xs text-slate-500 py-4">Nenhum módulo relacionado.</p>}
                         </div>
                     )}
                 </div>

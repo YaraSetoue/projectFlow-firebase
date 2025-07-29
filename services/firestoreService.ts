@@ -20,7 +20,7 @@ import {
 } from "@firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "@firebase/storage";
 import { auth, db } from '../firebase/config';
-import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus } from '../types';
+import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, Feature } from '../types';
 import { getSeedData } from "../utils/seed";
 
 // --- User Profile Functions ---
@@ -194,7 +194,7 @@ export const removeMemberFromProject = async (projectId: string, memberUid: stri
 };
 
 // --- Task Functions ---
-export const createTask = async (projectId: string, projectName: string, taskData: Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'moduleId' | 'relatedEntityIds' | 'dueDate'>>) => {
+export const createTask = async (projectId: string, projectName: string, taskData: Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId'>>) => {
     const user = auth.currentUser;
     if (!user) throw new Error("Usuário não autenticado");
 
@@ -210,25 +210,14 @@ export const createTask = async (projectId: string, projectName: string, taskDat
         dueDate: null,
         commentsCount: 0,
         dependsOn: [],
-        relatedEntityIds: [],
         timeLogs: [],
         links: [],
-        ...taskData, // Spread the provided data. This will overwrite defaults and add optional fields like moduleId if they exist.
+        ...taskData, // Spread the provided data. This will overwrite defaults and add optional fields like featureId if they exist.
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
     };
     
     const docRef = await addDoc(tasksRef, payload);
-
-    // Update entity relationships
-    if (taskData.relatedEntityIds && taskData.relatedEntityIds.length > 0) {
-        const batch = writeBatch(db);
-        taskData.relatedEntityIds.forEach(entityId => {
-            const entityRef = doc(db, 'projects', projectId, 'entities', entityId);
-            batch.update(entityRef, { relatedTaskIds: arrayUnion(docRef.id) });
-        });
-        await batch.commit();
-    }
     
     // Send notification if assigned to someone else
     if (taskData.assignee && taskData.assignee.uid !== user.uid) {
@@ -389,7 +378,7 @@ export const stopTimer = async () => {
 
 
 // --- Module Functions ---
-export const createModule = async (projectId: string, moduleData: Pick<Module, 'name'|'description'|'relatedEntityIds' | 'icon' | 'color'>, documentation: string) => {
+export const createModule = async (projectId: string, moduleData: Pick<Module, 'name'|'description' | 'icon' | 'color'>, documentation: string) => {
     const batch = writeBatch(db);
     const moduleRef = doc(collection(db, 'projects', projectId, 'modules'));
     
@@ -401,13 +390,6 @@ export const createModule = async (projectId: string, moduleData: Pick<Module, '
 
     const docRef = doc(collection(db, 'projects', projectId, 'modules', moduleRef.id, 'documentation'));
     batch.set(docRef, { content: documentation, updatedAt: serverTimestamp() });
-    
-    if(moduleData.relatedEntityIds && moduleData.relatedEntityIds.length > 0) {
-        moduleData.relatedEntityIds.forEach(entityId => {
-            const entityRef = doc(db, 'projects', projectId, 'entities', entityId);
-            batch.update(entityRef, { relatedModuleIds: arrayUnion(moduleRef.id) });
-        });
-    }
 
     await batch.commit();
 };
@@ -416,15 +398,6 @@ export const updateModule = async (projectId: string, moduleId: string, moduleDa
     const batch = writeBatch(db);
     const moduleRef = doc(db, 'projects', projectId, 'modules', moduleId);
     
-    const oldModuleDoc = await getDoc(moduleRef);
-    if (!oldModuleDoc.exists()) throw new Error("Módulo não encontrado.");
-
-    const oldRelatedEntityIds = oldModuleDoc.data().relatedEntityIds || [];
-    const newRelatedEntityIds = moduleData.relatedEntityIds || [];
-
-    const idsToAdd = newRelatedEntityIds.filter(id => !oldRelatedEntityIds.includes(id));
-    const idsToRemove = oldRelatedEntityIds.filter(id => !newRelatedEntityIds.includes(id));
-
     batch.update(moduleRef, moduleData);
 
     const docQuery = query(collection(db, 'projects', projectId, 'modules', moduleId, 'documentation'));
@@ -436,16 +409,6 @@ export const updateModule = async (projectId: string, moduleId: string, moduleDa
         const docRef = docSnap.docs[0].ref;
         batch.update(docRef, { content: documentation, updatedAt: serverTimestamp() });
     }
-
-    idsToAdd.forEach(entityId => {
-        const entityRef = doc(db, 'projects', projectId, 'entities', entityId);
-        batch.update(entityRef, { relatedModuleIds: arrayUnion(moduleId) });
-    });
-
-    idsToRemove.forEach(entityId => {
-        const entityRef = doc(db, 'projects', projectId, 'entities', entityId);
-        batch.update(entityRef, { relatedModuleIds: arrayRemove(moduleId) });
-    });
 
     await batch.commit();
 };
@@ -463,6 +426,20 @@ export const getModuleDocumentation = async (projectId: string, moduleId: string
         return docSnap.docs[0].data().content || '';
     }
     return '';
+};
+
+// --- Feature Functions ---
+export const createFeature = async (projectId: string, featureData: Omit<Feature, 'id' | 'createdAt' | 'projectId'>) => {
+    await addDoc(collection(db, 'projects', projectId, 'features'), {
+        ...featureData,
+        projectId,
+        createdAt: serverTimestamp()
+    });
+};
+
+export const updateFeature = async (projectId: string, featureId: string, featureData: Partial<Feature>) => {
+    const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+    await updateDoc(featureRef, featureData);
 };
 
 
@@ -565,7 +542,6 @@ export const seedDatabase = async (currentUser: User) => {
             icon: module.icon,
             color: module.color,
             createdAt: serverTimestamp(),
-            relatedEntityIds: [],
         });
         moduleNameToIdMap.set(module.name, moduleRef.id);
         
@@ -610,6 +586,7 @@ export const seedDatabase = async (currentUser: User) => {
         const task = tasksData[i];
         const taskRef = doc(collection(db, 'projects', projectId, 'tasks'));
         taskIndexToIdMap.set(i, taskRef.id);
+        const moduleId = moduleNameToIdMap.get(task.moduleName);
         const taskPayload: Omit<Task, 'id' | 'createdAt' | 'updatedAt'> = {
             projectId,
             title: task.title,
@@ -621,7 +598,8 @@ export const seedDatabase = async (currentUser: User) => {
             dependsOn: [],
             links: [],
             timeLogs: [],
-            moduleId: moduleNameToIdMap.get(task.moduleName) || undefined,
+            moduleId: moduleId,
+            // featureId is not part of seed data, so it will be undefined
         };
         batch.set(taskRef, {
             ...taskPayload,

@@ -1,16 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { Timestamp } from '@firebase/firestore';
+import { Timestamp, collection, query, orderBy } from '@firebase/firestore';
 import { createTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
-import { UserSummary, Module, Member, Entity, Task } from '../../types';
+import { UserSummary, Module, Member, Feature, Task } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
-import { Loader2, ChevronDown, UserCircle, Check, X, Tag } from 'lucide-react';
+import { Loader2, ChevronDown, UserCircle, Check } from 'lucide-react';
 import Popover from '../ui/Popover';
 import Avatar from '../ui/Avatar';
-
+import { db } from '../../firebase/config';
+import { useFirestoreQuery } from '../../hooks/useFirestoreQuery';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -19,56 +20,43 @@ interface CreateTaskModalProps {
   projectName: string;
   projectMembers: Member[];
   modules: Module[];
-  entities: Entity[];
+  features: Feature[];
 }
 
-const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, entities }) => {
+const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, features }) => {
   const { currentUser } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState<UserSummary | null>(null);
-  const [moduleId, setModuleId] = useState<string>('');
+  const [featureId, setFeatureId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
-  const [isModuleOpen, setIsModuleOpen] = useState(false);
   
-  // State for the entity selector
-  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
-  const [isEntityPopoverOpen, setIsEntityPopoverOpen] = useState(false);
+  const featuresByModule = useMemo(() => {
+    if (!features || !modules) return {};
+    return features.reduce((acc, feature) => {
+        (acc[feature.moduleId] = acc[feature.moduleId] || []).push(feature);
+        return acc;
+    }, {} as Record<string, Feature[]>);
+  }, [features, modules]);
 
   const resetForm = () => {
       setTitle('');
       setDescription('');
       setAssignee(null);
-      setModuleId('');
+      setFeatureId('');
       setDueDate('');
-      setSelectedEntityIds([]);
       setError('');
       setIsLoading(false);
       setIsAssigneeOpen(false);
-      setIsModuleOpen(false);
-      setIsEntityPopoverOpen(false);
   };
   
   const handleClose = () => {
     resetForm();
     onClose();
-  };
-  
-  const selectedEntities = useMemo(() => {
-    const selectedIds = new Set(selectedEntityIds);
-    return entities.filter(entity => selectedIds.has(entity.id));
-  }, [selectedEntityIds, entities]);
-
-  const handleEntityToggle = (entityId: string) => {
-    setSelectedEntityIds(prevIds => 
-      prevIds.includes(entityId)
-        ? prevIds.filter(id => id !== entityId)
-        : [...prevIds, entityId]
-    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,20 +83,21 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       if (assignee) {
         taskPayload.assignee = assignee;
       }
-      if (moduleId) {
-        taskPayload.moduleId = moduleId;
+      if (featureId) {
+        taskPayload.featureId = featureId;
+        const feature = features.find(f => f.id === featureId);
+        if (feature) {
+          taskPayload.moduleId = feature.moduleId;
+        }
       }
       if (dueDate) {
         taskPayload.dueDate = Timestamp.fromDate(new Date(dueDate));
-      }
-      if (selectedEntityIds && selectedEntityIds.length > 0) {
-        taskPayload.relatedEntityIds = selectedEntityIds;
       }
   
       await createTask(
           projectId, 
           projectName, 
-          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'moduleId' | 'relatedEntityIds' | 'dueDate'>>
+          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId'>>
       );
       
       handleClose();
@@ -198,40 +187,28 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                         </div>
                     </Popover>
                 </div>
-                 <div className="relative">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        Módulo
-                    </label>
-                     <Popover
-                        isOpen={isModuleOpen}
-                        onClose={() => setIsModuleOpen(false)}
-                        trigger={
-                            <Button type="button" variant="outline" className="w-full justify-between text-left" onClick={() => setIsModuleOpen(!isModuleOpen)} disabled={isLoading}>
-                                <span className="truncate">{modules.find(m => m.id === moduleId)?.name || 'Nenhum Módulo'}</span>
-                                <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                            </Button>
-                        }
-                    >
-                         <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                            <div
-                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm"
-                                onClick={() => { setModuleId(''); setIsModuleOpen(false); }}
-                            >
-                                Nenhum Módulo
-                                {moduleId === '' && <Check className="h-4 w-4 text-brand-500" />}
-                            </div>
-                            {modules.map(module => (
-                                <div
-                                    key={module.id}
-                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm"
-                                    onClick={() => { setModuleId(module.id); setIsModuleOpen(false); }}
-                                >
-                                    <span className="truncate">{module.name}</span>
-                                    {moduleId === module.id && <Check className="h-4 w-4 text-brand-500" />}
-                                </div>
-                            ))}
-                        </div>
-                    </Popover>
+                <div>
+                  <label htmlFor="featureId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Funcionalidade Relacionada
+                  </label>
+                  <select
+                    id="featureId"
+                    value={featureId}
+                    onChange={(e) => setFeatureId(e.target.value)}
+                    disabled={isLoading || !features}
+                    className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    <option value="">Nenhuma Funcionalidade</option>
+                    {modules.map(module => (
+                      (featuresByModule[module.id] && featuresByModule[module.id].length > 0) && (
+                        <optgroup key={module.id} label={`Módulo: ${module.name}`}>
+                          {featuresByModule[module.id].map(feature => (
+                            <option key={feature.id} value={feature.id}>{feature.name}</option>
+                          ))}
+                        </optgroup>
+                      )
+                    ))}
+                  </select>
                 </div>
             </div>
 
@@ -247,62 +224,6 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                     disabled={isLoading}
                     className="appearance-none"
                 />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Entidades Afetadas
-              </label>
-              <Popover
-                isOpen={isEntityPopoverOpen}
-                onClose={() => setIsEntityPopoverOpen(false)}
-                trigger={
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="w-full justify-between text-left font-normal h-auto min-h-10" 
-                    onClick={() => setIsEntityPopoverOpen(true)}
-                    disabled={isLoading}
-                  >
-                    <div className="flex flex-wrap gap-1">
-                      {selectedEntities.length > 0 ? (
-                        selectedEntities.map(entity => (
-                          <span key={entity.id} className="flex items-center gap-1 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full text-xs">
-                            {entity.name}
-                            <button 
-                              type="button" 
-                              className="hover:text-red-500" 
-                              onClick={(e) => { e.stopPropagation(); handleEntityToggle(entity.id); }}
-                            >
-                              <X size={12} />
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-slate-500">Selecione as entidades...</span>
-                      )}
-                    </div>
-                    <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                  </Button>
-                }
-              >
-                <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {entities.length > 0 ? (
-                    entities.map(entity => (
-                    <div
-                      key={entity.id}
-                      className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm"
-                      onClick={() => handleEntityToggle(entity.id)}
-                    >
-                      <span className="flex items-center gap-2"><Tag size={14} /><span className="truncate">{entity.name}</span></span>
-                      {selectedEntityIds.includes(entity.id) && <Check className="h-4 w-4 text-blue-500" />}
-                    </div>
-                  ))
-                  ) : (
-                    <div className="p-2 text-sm text-center text-slate-500">Nenhuma entidade criada neste projeto.</div>
-                  )}
-                </div>
-              </Popover>
             </div>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
