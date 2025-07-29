@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 // @ts-ignore
 import { useNavigate } from 'react-router-dom';
@@ -175,9 +176,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
 
     const timelineItems = useMemo(() => {
         if (!comments && !activities) return [];
-        const combined: Array<{type: 'comment', data: Comment, createdAt: Timestamp} | {type: 'activity', data: Activity, createdAt: Timestamp}> = [
-            ...(comments || []).map(c => ({ type: 'comment', data: c, createdAt: c.createdAt })),
-            ...(activities || []).map(a => ({ type: 'activity', data: a, createdAt: a.createdAt })),
+        const combined = [
+            ...(comments || []).map(c => ({ type: 'comment' as const, data: c, createdAt: c.createdAt })),
+            ...(activities || []).map(a => ({ type: 'activity' as const, data: a, createdAt: a.createdAt })),
         ];
         combined.sort((a, b) => a.createdAt.toDate().getTime() - b.createdAt.toDate().getTime());
         return combined;

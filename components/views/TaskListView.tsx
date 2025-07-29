@@ -153,6 +153,7 @@ const TaskActions = ({ task, onTaskClick, isEditor }: { task: Task, onTaskClick:
                 onClose={() => setIsPopoverOpen(false)}
                 trigger={<button onClick={() => setIsPopoverOpen(true)} className="p-2 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700"><MoreHorizontal className="h-4 w-4"/></button>}
                 className="w-48"
+                position="right"
             >
                 <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-1">
                     <button

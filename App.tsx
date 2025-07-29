@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 // @ts-ignore
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
@@ -25,42 +25,57 @@ import MyTasksPage from './pages/MyTasksPage';
 import ProjectActivitiesPage from './pages/ProjectActivitiesPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import CredentialsPage from './pages/CredentialsPage';
-import { UIProvider } from './contexts/UIContext';
+import { UIProvider, useUI } from './contexts/UIContext';
+import { SearchProvider } from './contexts/SearchContext';
+import SearchModal from './components/modals/SearchModal';
 
 // This component contains the application's routing logic.
-const AppRouter = () => (
-  <NetworkStatusProvider>
-    <HashRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        
-        <Route 
-          element={
-            <ProtectedRoute>
-              <MainLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/" element={<HomePage />} />
-          <Route path="/my-tasks" element={<MyTasksPage />} />
-          <Route path="/settings/account" element={<AccountSettingsPage />} />
-          <Route path="/project/:projectId" element={<ProjectLayout />}>
-              <Route index element={<ProjectDetailPage />} />
-              <Route path="modules" element={<ModulesPage />} />
-              <Route path="features" element={<FeaturesPage />} />
-              <Route path="datamodel" element={<DataModelPage />} />
-              <Route path="credentials" element={<CredentialsPage />} />
-              <Route path="members" element={<MembersPage />} />
-              <Route path="report" element={<ProjectReportsPage />} />
-              <Route path="activities" element={<ProjectActivitiesPage />} />
-          </Route>
-        </Route>
-      </Routes>
-    </HashRouter>
-    <NetworkStatusIndicator />
-  </NetworkStatusProvider>
+const AppRoutes = () => (
+  <Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/register" element={<RegisterPage />} />
+    
+    <Route 
+      element={
+        <ProtectedRoute>
+          <MainLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route path="/" element={<HomePage />} />
+      <Route path="/my-tasks" element={<MyTasksPage />} />
+      <Route path="/settings/account" element={<AccountSettingsPage />} />
+      <Route path="/project/:projectId" element={<ProjectLayout />}>
+          <Route index element={<ProjectDetailPage />} />
+          <Route path="modules" element={<ModulesPage />} />
+          <Route path="features" element={<FeaturesPage />} />
+          <Route path="datamodel" element={<DataModelPage />} />
+          <Route path="credentials" element={<CredentialsPage />} />
+          <Route path="members" element={<MembersPage />} />
+          <Route path="report" element={<ProjectReportsPage />} />
+          <Route path="activities" element={<ProjectActivitiesPage />} />
+      </Route>
+    </Route>
+  </Routes>
 );
+
+// This component handles the global keyboard shortcut for the search modal.
+const GlobalShortcutHandler = () => {
+    const { openSearchModal } = useUI();
+    
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+                event.preventDefault();
+                openSearchModal();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [openSearchModal]);
+
+    return null; // This component does not render anything.
+};
 
 // This component accesses the auth context and shows a splash screen
 // while authentication is loading.
@@ -75,8 +90,17 @@ const AppContent = () => {
         );
     }
     
-    // Once auth is resolved, render the app's routes
-    return <AppRouter />;
+    // Once auth is resolved, render the app's routes inside the router
+    return (
+      <NetworkStatusProvider>
+        <HashRouter>
+            <GlobalShortcutHandler />
+            <AppRoutes />
+            <SearchModal />
+        </HashRouter>
+        <NetworkStatusIndicator />
+      </NetworkStatusProvider>
+    );
 };
 
 // The main App component wraps everything in the necessary providers.
@@ -85,7 +109,9 @@ function App() {
     <ThemeProvider>
         <AuthProvider>
           <UIProvider>
-            <AppContent />
+            <SearchProvider>
+                <AppContent />
+            </SearchProvider>
           </UIProvider>
         </AuthProvider>
     </ThemeProvider>

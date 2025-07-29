@@ -22,7 +22,8 @@ const UserNav = () => {
                     <Avatar user={currentUser} size="sm" />
                 </button>
             }
-            className="w-56 right-0"
+            className="w-56"
+            position="right"
         >
             <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg shadow-2xl p-2">
                 <div className="p-2 mb-2 border-b dark:border-slate-700">

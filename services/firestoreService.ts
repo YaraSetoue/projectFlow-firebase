@@ -1,3 +1,4 @@
+
 import { 
   collection, 
   addDoc, 
@@ -20,12 +21,12 @@ import {
 } from "@firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "@firebase/storage";
 import { auth, db } from '../firebase/config';
-import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, TaskCategory, Feature, SubStatus, Activity } from '../types';
+import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, TaskCategory, Feature, SubStatus, Activity, ActivityType } from '../types';
 import { getSeedData } from "../utils/seed";
 
 // --- Activity Logging ---
 
-export const logActivity = async (projectId: string, message: string, taskId?: string) => {
+export const logActivity = async (projectId: string, type: ActivityType, message: string, taskId?: string) => {
     const user = auth.currentUser;
     if (!user) return; 
 
@@ -37,6 +38,7 @@ export const logActivity = async (projectId: string, message: string, taskId?: s
 
     const activityRef = collection(db, 'projects', projectId, 'activity');
     const activityPayload: Omit<Activity, 'id'> = {
+        type,
         projectId,
         message,
         user: userSummary,
@@ -97,6 +99,17 @@ export const markNotificationAsRead = async (notificationId: string) => {
     if (!user) throw new Error("Usuário não autenticado");
     const notificationRef = doc(db, 'users', user.uid, 'notifications', notificationId);
     await updateDoc(notificationRef, { isRead: true });
+};
+
+export const markAllNotificationsAsRead = async (notificationIds: string[]) => {
+    const user = auth.currentUser;
+    if (!user || notificationIds.length === 0) return;
+    const batch = writeBatch(db);
+    notificationIds.forEach(id => {
+        const notificationRef = doc(db, 'users', user.uid, 'notifications', id);
+        batch.update(notificationRef, { isRead: true });
+    });
+    await batch.commit();
 };
 
 
@@ -192,7 +205,7 @@ export const acceptInvitation = async (invitation: Invitation) => {
     batch.update(invitationRef, { status: 'accepted' });
     await batch.commit();
 
-    await logActivity(invitation.projectId, `${invitation.inviter.name} adicionou ${user.displayName} ao projeto.`);
+    await logActivity(invitation.projectId, 'member_added', `${invitation.inviter.name} adicionou ${user.displayName} ao projeto.`);
 };
 
 export const declineInvitation = async (invitationId: string) => {
@@ -273,7 +286,7 @@ export const createTask = async (projectId: string, projectName: string, taskDat
     
     const docRef = await addDoc(tasksRef, payload);
 
-    await logActivity(projectId, `${user.displayName} criou a tarefa "${payload.title}".`, docRef.id);
+    await logActivity(projectId, 'task_created', `${user.displayName} criou a tarefa "${payload.title}".`, docRef.id);
     
     // Send notification if assigned to someone else
     if (taskData.assignee && taskData.assignee.uid !== user.uid) {
@@ -318,7 +331,7 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
                 statusText = STATUS_LABELS[data.status];
             }
              const message = `${user.displayName} moveu a tarefa "${oldTask.title}" para ${statusText}.`;
-             await logActivity(projectId, message, taskId);
+             await logActivity(projectId, 'task_status_changed', message, taskId);
         }
     }
 };
@@ -382,7 +395,7 @@ export const addTaskComment = async (
         }
     });
 
-     await logActivity(projectId, `${userSummary.displayName} comentou na tarefa "${taskTitle}".`, taskId);
+     await logActivity(projectId, 'comment_added', `${userSummary.displayName} comentou na tarefa "${taskTitle}".`, taskId);
 };
 
 export const addLinkToTask = async (projectId: string, taskId: string, link: TaskLink) => {
@@ -485,7 +498,7 @@ export const createModule = async (projectId: string, moduleData: Pick<Module, '
 
     const user = auth.currentUser;
     if (user?.displayName) {
-        await logActivity(projectId, `${user.displayName} criou o módulo "${moduleData.name}".`);
+        await logActivity(projectId, 'module_created', `${user.displayName} criou o módulo "${moduleData.name}".`);
     }
 };
 

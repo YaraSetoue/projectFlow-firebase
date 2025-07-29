@@ -234,8 +234,11 @@ export interface Feature {
 }
 
 // --- Activity Feed Types ---
+export type ActivityType = 'task_created' | 'task_status_changed' | 'comment_added' | 'member_added' | 'module_created';
+
 export interface Activity {
     id: string;
+    type: ActivityType;
     projectId: string;
     message: string;
     user: UserSummary;

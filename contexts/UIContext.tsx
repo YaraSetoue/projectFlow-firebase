@@ -4,8 +4,11 @@ import React, { createContext, useState, useEffect, ReactNode, useContext } from
 interface UIContextType {
   isGlobalSidebarCollapsed: boolean;
   isProjectSidebarCollapsed: boolean;
+  isSearchModalOpen: boolean;
   toggleGlobalSidebar: () => void;
   toggleProjectSidebar: () => void;
+  openSearchModal: () => void;
+  closeSearchModal: () => void;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -26,6 +29,7 @@ const getInitialState = (key: string, defaultValue: boolean): boolean => {
 export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isGlobalSidebarCollapsed, setGlobalSidebarCollapsed] = useState<boolean>(() => getInitialState('isGlobalSidebarCollapsed', false));
   const [isProjectSidebarCollapsed, setProjectSidebarCollapsed] = useState<boolean>(() => getInitialState('isProjectSidebarCollapsed', false));
+  const [isSearchModalOpen, setSearchModalOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -51,11 +55,17 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setProjectSidebarCollapsed(prev => !prev);
   };
 
+  const openSearchModal = () => setSearchModalOpen(true);
+  const closeSearchModal = () => setSearchModalOpen(false);
+
   const value = {
     isGlobalSidebarCollapsed,
     isProjectSidebarCollapsed,
+    isSearchModalOpen,
     toggleGlobalSidebar,
     toggleProjectSidebar,
+    openSearchModal,
+    closeSearchModal,
   };
 
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
