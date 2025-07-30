@@ -148,100 +148,102 @@ const CreateEditModuleModal: React.FC<CreateEditModuleModalProps> = ({ isOpen, o
           </div>
 
           {/* Tab Content */}
-          <div className="flex-grow py-6">
-              <div role="tabpanel" hidden={activeTab !== 'general'}>
-                   <div className="space-y-6">
-                      <div className="flex items-end gap-2">
-                        <Popover
-                            isOpen={isIconPopoverOpen}
-                            onClose={() => setIsIconPopoverOpen(false)}
-                            trigger={
-                                <Button type="button" variant="outline" size="icon" onClick={() => setIsIconPopoverOpen(true)} className="flex-shrink-0">
-                                    <IconRenderer name={icon} />
-                                </Button>
-                            }
-                            className="w-72"
-                        >
-                             <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-2 grid grid-cols-6 gap-1">
-                                {MODULE_ICON_OPTIONS.map(iconName => (
-                                    <button 
-                                        key={iconName}
-                                        type="button"
-                                        onClick={() => { setIcon(iconName); setIsIconPopoverOpen(false); }}
-                                        className={`flex items-center justify-center p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 ${icon === iconName ? 'bg-brand-100 dark:bg-brand-500/20' : ''}`}
-                                    >
-                                        <IconRenderer name={iconName} size={20} />
-                                    </button>
-                                ))}
-                             </div>
-                        </Popover>
-                        <div className="flex-grow">
-                            <label htmlFor="moduleName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                                Nome do Módulo
-                            </label>
-                            <Input
-                                id="moduleName"
-                                ref={nameInputRef}
-                                type="text"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                placeholder="Ex: Autenticação de Usuário"
-                                required
-                                disabled={isLoading}
-                            />
-                        </div>
-                      </div>
+          <div className="flex-grow py-6 flex flex-col min-h-0">
+              {activeTab === 'general' && (
+                  <div role="tabpanel">
+                       <div className="space-y-6">
+                          <div className="flex items-end gap-2">
+                            <Popover
+                                isOpen={isIconPopoverOpen}
+                                onClose={() => setIsIconPopoverOpen(false)}
+                                trigger={
+                                    <Button type="button" variant="outline" size="icon" onClick={() => setIsIconPopoverOpen(true)} className="flex-shrink-0">
+                                        <IconRenderer name={icon} />
+                                    </Button>
+                                }
+                                className="w-72"
+                            >
+                                 <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-2 grid grid-cols-6 gap-1">
+                                    {MODULE_ICON_OPTIONS.map(iconName => (
+                                        <button 
+                                            key={iconName}
+                                            type="button"
+                                            onClick={() => { setIcon(iconName); setIsIconPopoverOpen(false); }}
+                                            className={`flex items-center justify-center p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 ${icon === iconName ? 'bg-brand-100 dark:bg-brand-500/20' : ''}`}
+                                        >
+                                            <IconRenderer name={iconName} size={20} />
+                                        </button>
+                                    ))}
+                                 </div>
+                            </Popover>
+                            <div className="flex-grow">
+                                <label htmlFor="moduleName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                    Nome do Módulo
+                                </label>
+                                <Input
+                                    id="moduleName"
+                                    ref={nameInputRef}
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="Ex: Autenticação de Usuário"
+                                    required
+                                    disabled={isLoading}
+                                />
+                            </div>
+                          </div>
 
-                      <div>
-                          <label htmlFor="moduleDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                              Descrição
-                          </label>
-                          <Textarea
-                              id="moduleDescription"
-                              value={description}
-                              onChange={(e) => setDescription(e.target.value)}
-                              placeholder="Um breve resumo do que este módulo faz."
-                              rows={3}
-                              disabled={isLoading}
-                          />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Cor</label>
-                        <div className="flex flex-wrap gap-2">
-                            {MODULE_COLOR_OPTIONS.map(colorName => (
-                                <button
-                                    key={colorName}
-                                    type="button"
-                                    title={colorName}
-                                    onClick={() => setColor(colorName)}
-                                    className={`h-7 w-7 rounded-full transition-transform duration-150 ${MODULE_COLOR_MAP[colorName]?.bg || 'bg-gray-500'} ${color === colorName ? 'ring-2 ring-offset-2 dark:ring-offset-slate-900 ring-current' : 'hover:scale-110'}`}
-                                ></button>
-                            ))}
-                        </div>
+                          <div>
+                              <label htmlFor="moduleDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                  Descrição
+                              </label>
+                              <Textarea
+                                  id="moduleDescription"
+                                  value={description}
+                                  onChange={(e) => setDescription(e.target.value)}
+                                  placeholder="Um breve resumo do que este módulo faz."
+                                  rows={3}
+                                  disabled={isLoading}
+                              />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Cor</label>
+                            <div className="flex flex-wrap gap-2">
+                                {MODULE_COLOR_OPTIONS.map(colorName => (
+                                    <button
+                                        key={colorName}
+                                        type="button"
+                                        title={colorName}
+                                        onClick={() => setColor(colorName)}
+                                        className={`h-7 w-7 rounded-full transition-transform duration-150 ${MODULE_COLOR_MAP[colorName]?.bg || 'bg-gray-500'} ${color === colorName ? 'ring-2 ring-offset-2 dark:ring-offset-slate-900 ring-current' : 'hover:scale-110'}`}
+                                    ></button>
+                                ))}
+                            </div>
+                          </div>
                       </div>
                   </div>
-              </div>
+              )}
 
-              <div role="tabpanel" hidden={activeTab !== 'documentation'}>
-                   {isDocLoading ? (
-                      <div className="h-[250px] flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-md">
-                          <Loader2 className="animate-spin" />
-                      </div>
-                  ) : (
-                      <div>
+              {activeTab === 'documentation' && (
+                  <div role="tabpanel" className="flex-grow flex flex-col min-h-0">
+                       {isDocLoading ? (
+                          <div className="h-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-md">
+                              <Loader2 className="animate-spin" />
+                          </div>
+                      ) : (
                         <QuillEditor
                             theme="snow"
                             value={documentation}
                             onChange={setDocumentation}
                             modules={quillModules}
-                            className="h-[320px]"
+                            className="quill-flex-container flex-grow flex flex-col min-h-0"
                             readOnly={isLoading}
                             placeholder="Comece a escrever a documentação aqui..."
                         />
-                      </div>
-                  )}
-              </div>
+                      )}
+                  </div>
+              )}
           </div>
 
           {/* Footer */}

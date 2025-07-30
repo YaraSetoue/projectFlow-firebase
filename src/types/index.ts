@@ -126,6 +126,7 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
+  subStatus?: 'executing' | 'testing' | 'approved' | null;
   assignee: UserSummary | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;

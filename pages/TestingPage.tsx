@@ -3,10 +3,10 @@ import React, { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { collection, query, orderBy, where } from '@firebase/firestore';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FlaskConical, Loader2, ThumbsDown } from 'lucide-react';
+import { FlaskConical, Loader2, XCircle } from 'lucide-react';
 
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
@@ -19,7 +19,7 @@ import Button from '../components/ui/Button';
 import CreateEditFeatureModal from '../components/modals/CreateEditFeatureModal';
 import AlertDialog from '../components/ui/AlertDialog';
 
-type FeatureStatus = 'in_testing' | 'approved' | 'released';
+type FeatureStatus = 'in_development' | 'in_testing' | 'approved' | 'released';
 
 // Feature Card Component for the Test Kanban
 const FeatureTestCard = ({ feature, tasks, onReprove, onCardClick, isEditor }: { feature: Feature, tasks: Task[], onReprove: (featureId: string) => void, onCardClick: () => void, isEditor: boolean }) => {
@@ -40,17 +40,18 @@ const FeatureTestCard = ({ feature, tasks, onReprove, onCardClick, isEditor }: {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{feature.description}</p>
                 {relevantTasks.length > 0 && (
                     <div className="mt-3">
-                        <h5 className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-1">TAREFAS CONCLUÍDAS</h5>
-                        <ul className="text-sm list-disc list-inside text-slate-600 dark:text-slate-300">
-                            {relevantTasks.map(t => <li key={t.id} className="truncate">{t.title}</li>)}
+                        <h5 className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-1">TAREFAS ({relevantTasks.length})</h5>
+                        <ul className="text-sm list-disc list-inside text-slate-600 dark:text-slate-300 max-h-20 overflow-y-auto pr-2">
+                           {relevantTasks.slice(0, 3).map(t => <li key={t.id} className="truncate">{t.title}</li>)}
+                           {relevantTasks.length > 3 && <li className="text-xs italic text-slate-500">e mais {relevantTasks.length - 3}...</li>}
                         </ul>
                     </div>
                 )}
             </div>
-            {feature.status === 'in_testing' && isEditor && (
+            {(feature.status === 'in_testing' || feature.status === 'approved') && isEditor && (
                 <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                    <Button variant="outline" size="sm" className="w-full text-red-500 border-red-500/50 hover:bg-red-500/10" onClick={() => onReprove(feature.id)}>
-                        <ThumbsDown className="mr-2 h-4 w-4" /> Reprovar
+                    <Button variant="outline" size="sm" className="w-full text-red-500 border-red-500/50 hover:bg-red-500/10" onClick={(e) => { e.stopPropagation(); onReprove(feature.id); }}>
+                        <XCircle className="mr-2 h-4 w-4" /> Reprovar
                     </Button>
                 </div>
             )}
@@ -60,8 +61,9 @@ const FeatureTestCard = ({ feature, tasks, onReprove, onCardClick, isEditor }: {
 
 // Kanban Column Component
 const TestKanbanColumn = ({ id, title, features, tasks, onReprove, onFeatureClick, isEditor }: { id: string; title: string; features: Feature[]; tasks: Task[]; onReprove: (featureId: string) => void, onFeatureClick: (feature: Feature) => void, isEditor: boolean }) => {
+    const { setNodeRef } = useDroppable({ id });
     return (
-        <div className="bg-slate-100/50 dark:bg-slate-900 rounded-lg p-4 flex flex-col h-full">
+        <div ref={setNodeRef} className="bg-slate-100/50 dark:bg-slate-900 rounded-lg p-4 flex flex-col h-full">
             <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4 px-2">{title} <span className="text-sm text-slate-500">({features.length})</span></h3>
             <SortableContext id={id} items={features.map(f => f.id)} strategy={verticalListSortingStrategy}>
                 <div className="flex-grow space-y-4 min-h-[100px] overflow-y-auto">
@@ -87,7 +89,7 @@ const TestingPage = () => {
     const [isReproving, setIsReproving] = useState(false);
     const [modalFeature, setModalFeature] = useState<Feature | null>(null);
 
-    const featuresQuery = useMemo(() => query(collection(db, 'projects', projectId, 'features'), where('status', 'in', ['in_testing', 'approved', 'released'])), [projectId]);
+    const featuresQuery = useMemo(() => query(collection(db, 'projects', projectId, 'features'), where('status', 'in', ['in_development', 'in_testing', 'approved', 'released'])), [projectId]);
     const { data: features, loading: featuresLoading, error: featuresError } = useFirestoreQuery<Feature>(featuresQuery);
 
     const tasksQuery = useMemo(() => query(collection(db, 'projects', projectId, 'tasks')), [projectId]);
@@ -103,7 +105,7 @@ const TestingPage = () => {
     const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
     const featuresByStatus = useMemo(() => {
-        const columns: Record<FeatureStatus, Feature[]> = { in_testing: [], approved: [], released: [] };
+        const columns: Record<FeatureStatus, Feature[]> = { in_development: [], in_testing: [], approved: [], released: [] };
         return features?.reduce((acc, feature) => {
             if (acc[feature.status as FeatureStatus]) {
                 acc[feature.status as FeatureStatus].push(feature);
@@ -114,14 +116,26 @@ const TestingPage = () => {
 
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
-        if (!over || !isEditor) return;
+        
+        if (over && active.id !== over.id) {
+            if (!isEditor) return;
+            const featureId = active.id as string;
+            const newStatus = over.id as FeatureStatus;
+            
+            const feature = features?.find(f => f.id === featureId);
+            if (!feature || feature.status === newStatus) return;
+            
+            if (newStatus === 'in_development') {
+                handleReproveClick(featureId);
+                return;
+            }
 
-        const featureId = active.id as string;
-        const oldStatus = (features?.find(f => f.id === featureId)?.status) as FeatureStatus;
-        const newStatus = over.id as FeatureStatus;
-
-        if (oldStatus !== newStatus) {
-            await updateFeature(projectId, featureId, { status: newStatus });
+            try {
+                 await updateFeature(projectId, featureId, { status: newStatus });
+            } catch (err) {
+                console.error("Failed to update feature status:", err);
+                alert("Falha ao mover a funcionalidade.");
+            }
         }
     };
 
@@ -162,7 +176,8 @@ const TestingPage = () => {
             
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <div className="flex-grow">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full">
+                        <TestKanbanColumn id="in_development" title="Reprovado / Em Correção" features={featuresByStatus.in_development} tasks={tasks || []} onReprove={handleReproveClick} onFeatureClick={setModalFeature} isEditor={isEditor} />
                         <TestKanbanColumn id="in_testing" title="A Testar" features={featuresByStatus.in_testing} tasks={tasks || []} onReprove={handleReproveClick} onFeatureClick={setModalFeature} isEditor={isEditor} />
                         <TestKanbanColumn id="approved" title="Aprovado" features={featuresByStatus.approved} tasks={tasks || []} onReprove={handleReproveClick} onFeatureClick={setModalFeature} isEditor={isEditor} />
                         <TestKanbanColumn id="released" title="Liberado" features={featuresByStatus.released} tasks={tasks || []} onReprove={handleReproveClick} onFeatureClick={setModalFeature} isEditor={isEditor} />

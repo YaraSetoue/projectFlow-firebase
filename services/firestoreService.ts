@@ -246,6 +246,7 @@ export const createTask = async (projectId: string, projectName: string, taskDat
         title: '',
         description: '',
         status: 'todo' as const,
+        subStatus: null,
         assignee: null,
         dueDate: null,
         commentsCount: 0,
@@ -273,7 +274,20 @@ export const createTask = async (projectId: string, projectName: string, taskDat
     }
 };
 
-const STATUS_LABELS: Record<TaskStatus, string> = { todo: 'A Fazer', inprogress: 'Em Andamento', done: 'Concluído' };
+const getColumnName = (status: TaskStatus, subStatus: Task['subStatus']) => {
+    if (status === 'todo') return 'A Fazer';
+    if (status === 'done') return 'Concluído';
+    if (status === 'inprogress') {
+        switch(subStatus) {
+            case 'executing': return 'Executando';
+            case 'testing': return 'Em Teste';
+            case 'approved': return 'Aprovado';
+            default: return 'Em Andamento';
+        }
+    }
+    return 'um novo estado';
+}
+
 
 export const updateTask = async (projectId: string, taskId: string, data: Partial<Task>) => {
     const user = auth.currentUser;
@@ -287,9 +301,15 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
     
     await updateDoc(taskRef, payload);
 
-    if (user?.displayName && data.status && data.status !== oldTask.status) {
-        const statusText = STATUS_LABELS[data.status];
-        const message = `${user.displayName} moveu a tarefa "${oldTask.title}" para ${statusText}.`;
+    const statusChanged = 'status' in data && data.status !== oldTask.status;
+    const subStatusChanged = 'subStatus' in data && data.subStatus !== oldTask.subStatus;
+
+    if (user?.displayName && (statusChanged || subStatusChanged)) {
+        const newStatus = data.status || oldTask.status;
+        const newSubStatus = 'subStatus' in data ? data.subStatus : oldTask.subStatus;
+        const columnName = getColumnName(newStatus, newSubStatus);
+        
+        const message = `${user.displayName} moveu a tarefa "${oldTask.title}" para ${columnName}.`;
         await logActivity(projectId, 'task_status_changed', message, taskId);
 
         // QA WORKFLOW LOGIC
@@ -298,7 +318,7 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
             const featureRef = doc(db, 'projects', projectId, 'features', featureId);
 
             // Logic to move feature to "in_development"
-            if (oldTask.status === 'todo' && data.status === 'inprogress') {
+            if (oldTask.status === 'todo' && newStatus === 'inprogress') {
                 const featureDoc = await getDoc(featureRef);
                 if (featureDoc.exists() && featureDoc.data().status === 'backlog') {
                     await updateDoc(featureRef, { status: 'in_development' });
@@ -306,7 +326,7 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
             }
 
             // Logic to move feature to "in_testing"
-            if (data.status === 'done') {
+            if (newStatus === 'done') {
                 const tasksQuery = query(collection(db, 'projects', projectId, 'tasks'), where('featureId', '==', featureId));
                 const tasksSnapshot = await getDocs(tasksQuery);
                 
@@ -576,7 +596,7 @@ export const createFeature = async (projectId: string, featureData: Omit<Feature
 
 export const updateFeature = async (projectId: string, featureId: string, featureData: Partial<Feature>) => {
     const featureRef = doc(db, 'projects', projectId, 'features', featureId);
-    await updateDoc(featureRef, featureData);
+    await updateDoc(featureRef, { ...featureData, updatedAt: serverTimestamp() });
 };
 
 export const deleteFeature = async (projectId: string, featureId:string) => {
@@ -794,6 +814,7 @@ export const seedDatabase = async (currentUser: User) => {
             description: task.description,
             status: task.status,
             assignee: task.assignee,
+            subStatus: task.status === 'inprogress' ? 'executing' : null,
             commentsCount: task.commentsCount,
             dueDate: task.dueDate || null,
             dependencies: [],

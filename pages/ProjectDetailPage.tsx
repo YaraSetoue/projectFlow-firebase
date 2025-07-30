@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { useSearchParams } from 'react-router-dom';
@@ -375,7 +376,7 @@ const ProjectDetailPage = () => {
                  ) : tasksError ? (
                     <div className="p-4 sm:p-6 lg:p-8"><ConnectionErrorState error={tasksError} context="tarefas do projeto" /></div>
                  ) : viewMode === 'board' ? (
-                     <div className="px-4 sm:px-6 lg:px-8 py-6 h-full"><KanbanBoard tasks={filteredTasks} projectId={projectId} onTaskClick={setSelectedTask} moduleLookup={moduleLookup}/></div>
+                     <div className="px-4 sm:px-6 lg:px-8 py-6 h-full"><KanbanBoard tasks={filteredTasks} projectId={projectId} onTaskClick={setSelectedTask} moduleLookup={moduleLookup} taskCategories={categories || []} /></div>
                 ) : (
                     sortedTasks.length > 0 ? (
                         <div className="pt-6 px-4 sm:px-6 lg:px-8 pb-8">
@@ -391,7 +392,7 @@ const ProjectDetailPage = () => {
                             />
                         </div>
                     ) : (
-                         <p className="text-center text-slate-500 py-10 px-4 sm:px-6 lg:px-8">Nenhuma tarefa encontrada para os filtros selecionados.</p>
+                         <p className="text-center text-slate-500 py-10 px-4 sm:px-6 lg:p-8">Nenhuma tarefa encontrada para os filtros selecionados.</p>
                     )
                 )}
             </main>
