@@ -115,45 +115,35 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, moduleLookup }: KanbanBoar
                 )}
             </AnimatePresence>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                 <div className="w-full overflow-x-auto pb-4">
-                    <div className="flex gap-6 min-w-max h-full">
-                        <div className="w-80 flex-shrink-0 h-full">
-                             <KanbanColumn
-                                id="todo"
-                                title="A Fazer"
-                                tasks={tasksByColumn.todo || []}
-                                onTaskClick={onTaskClick}
-                                blockedStatusLookup={blockedStatusLookup}
-                                moduleLookup={moduleLookup}
-                                currentUser={currentUser}
-                            />
-                        </div>
-
-                         <div className="w-80 flex-shrink-0 h-full">
-                             <KanbanColumn
-                                id="inprogress"
-                                title="Em Andamento"
-                                tasks={tasksByColumn.inprogress || []}
-                                onTaskClick={onTaskClick}
-                                blockedStatusLookup={blockedStatusLookup}
-                                moduleLookup={moduleLookup}
-                                currentUser={currentUser}
-                            />
-                        </div>
-
-                        <div className="w-80 flex-shrink-0 h-full">
-                             <KanbanColumn
-                                id="done"
-                                title="Concluído"
-                                tasks={tasksByColumn.done || []}
-                                onTaskClick={onTaskClick}
-                                blockedStatusLookup={blockedStatusLookup}
-                                moduleLookup={moduleLookup}
-                                currentUser={currentUser}
-                            />
-                        </div>
-                    </div>
-                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+                    <KanbanColumn
+                        id="todo"
+                        title="A Fazer"
+                        tasks={tasksByColumn.todo || []}
+                        onTaskClick={onTaskClick}
+                        blockedStatusLookup={blockedStatusLookup}
+                        moduleLookup={moduleLookup}
+                        currentUser={currentUser}
+                    />
+                    <KanbanColumn
+                        id="inprogress"
+                        title="Em Andamento"
+                        tasks={tasksByColumn.inprogress || []}
+                        onTaskClick={onTaskClick}
+                        blockedStatusLookup={blockedStatusLookup}
+                        moduleLookup={moduleLookup}
+                        currentUser={currentUser}
+                    />
+                    <KanbanColumn
+                        id="done"
+                        title="Concluído"
+                        tasks={tasksByColumn.done || []}
+                        onTaskClick={onTaskClick}
+                        blockedStatusLookup={blockedStatusLookup}
+                        moduleLookup={moduleLookup}
+                        currentUser={currentUser}
+                    />
+                </div>
             </DndContext>
         </>
     );

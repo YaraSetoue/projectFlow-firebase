@@ -25,6 +25,7 @@ import MyTasksPage from './pages/MyTasksPage';
 import ProjectActivitiesPage from './pages/ProjectActivitiesPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import CredentialsPage from './pages/CredentialsPage';
+import TestingPage from './pages/TestingPage';
 import { UIProvider, useUI } from './contexts/UIContext';
 import { SearchProvider } from './contexts/SearchContext';
 import SearchModal from './components/modals/SearchModal';
@@ -50,6 +51,7 @@ const AppRoutes = () => (
           <Route path="modules" element={<ModulesPage />} />
           <Route path="features" element={<FeaturesPage />} />
           <Route path="datamodel" element={<DataModelPage />} />
+          <Route path="testing" element={<TestingPage />} />
           <Route path="credentials" element={<CredentialsPage />} />
           <Route path="members" element={<MembersPage />} />
           <Route path="report" element={<ProjectReportsPage />} />

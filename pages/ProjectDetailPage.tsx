@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { useSearchParams } from 'react-router-dom';
@@ -6,7 +7,7 @@ import { collection, query, orderBy, where, getDocs } from '@firebase/firestore'
 import { PlusCircle, Settings, Loader2, LayoutGrid, List, ChevronDown, Check } from 'lucide-react';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Task, Member, Module, User, Entity, TaskStatus, Feature } from '../types';
+import { Task, Member, Module, User, Entity, TaskStatus, Feature, TaskCategory } from '../types';
 import KanbanBoard from '../components/kanban/KanbanBoard';
 import TaskListView from '../components/views/TaskListView';
 import Button from '../components/ui/Button';
@@ -163,6 +164,12 @@ const ProjectDetailPage = () => {
     );
     const { data: features, loading: featuresLoading } = useFirestoreQuery<Feature>(featuresQuery);
 
+    const categoriesQuery = useMemo(() =>
+        query(collection(db, 'projects', projectId, 'taskCategories'), orderBy('name', 'asc')),
+        [projectId]
+    );
+    const { data: categories, loading: categoriesLoading } = useFirestoreQuery<TaskCategory>(categoriesQuery);
+
     useEffect(() => {
         if (!project?.memberUids || project.memberUids.length === 0) {
             setProjectMembers([]);
@@ -281,7 +288,7 @@ const ProjectDetailPage = () => {
     // State and logic for TaskListView
     const { sortedTasks, requestSort, sortConfig } = useTaskSorter(filteredTasks, projectMembers);
     
-    const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading || featuresLoading;
+    const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading || featuresLoading || categoriesLoading;
 
     return (
         <motion.div
@@ -414,6 +421,7 @@ const ProjectDetailPage = () => {
                     allTasks={allTasksForDependencies || []}
                     modules={modules || []}
                     entities={entities || []}
+                    categories={categories || []}
                 />
             )}
 

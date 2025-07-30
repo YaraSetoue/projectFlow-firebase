@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 // @ts-ignore
 import { useParams } from 'react-router-dom';
@@ -5,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, orderBy } from '@firebase/firestore';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Module, Task, Entity } from '../types';
+import { Module, Task, Feature } from '../types';
 import { PlusCircle, Loader2, Boxes } from 'lucide-react';
 
 import Button from '../components/ui/Button';
@@ -56,12 +57,18 @@ const ModulesPage = () => {
     );
     const { data: modules, loading: modulesLoading, error } = useFirestoreQuery<Module>(modulesQuery);
     
-    // Query all tasks to calculate progress for each module
     const tasksQuery = useMemo(() => 
         query(collection(db, 'projects', projectId, 'tasks')),
         [projectId]
     );
     const { data: tasks, loading: tasksLoading } = useFirestoreQuery<Task>(tasksQuery);
+
+    const featuresQuery = useMemo(() =>
+        query(collection(db, 'projects', projectId, 'features')),
+        [projectId]
+    );
+    const { data: features, loading: featuresLoading, error: featuresError } = useFirestoreQuery<Feature>(featuresQuery);
+
 
     const handleOpenCreateModal = () => {
         setEditingModule(null);
@@ -82,7 +89,8 @@ const ModulesPage = () => {
         handleCloseModal();
     };
 
-    const loading = modulesLoading || tasksLoading;
+    const loading = modulesLoading || tasksLoading || featuresLoading;
+    const combinedError = error || featuresError;
 
     return (
         <motion.div
@@ -110,8 +118,8 @@ const ModulesPage = () => {
             <div>
                 {loading ? (
                     <div className="text-center py-10"><Loader2 className="h-8 w-8 animate-spin text-brand-500" /></div>
-                ) : error ? (
-                    <ConnectionErrorState error={error} context="módulos" />
+                ) : combinedError ? (
+                    <ConnectionErrorState error={combinedError} context="módulos" />
                 ) : modules && modules.length > 0 ? (
                     <motion.div 
                         {...{
@@ -127,16 +135,22 @@ const ModulesPage = () => {
                         } as any}
                         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
                     >
-                        {modules.map(module => (
-                            <ModuleCard 
-                                key={module.id} 
-                                module={module} 
-                                projectId={projectId}
-                                tasks={tasks || []}
-                                onEdit={() => handleOpenEditModal(module)}
-                                isEditor={isEditor}
-                            />
-                        ))}
+                        {modules.map(module => {
+                            const moduleTasks = tasks ? tasks.filter(t => t.moduleId === module.id) : [];
+                            const moduleFeatures = features ? features.filter(f => f.moduleId === module.id) : [];
+
+                            return (
+                                <ModuleCard 
+                                    key={module.id} 
+                                    module={module} 
+                                    projectId={projectId}
+                                    tasks={moduleTasks}
+                                    features={moduleFeatures}
+                                    onEdit={() => handleOpenEditModal(module)}
+                                    isEditor={isEditor}
+                                />
+                            );
+                        })}
                     </motion.div>
                 ) : (
                     <AnimatePresence>

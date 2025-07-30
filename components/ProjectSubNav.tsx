@@ -1,8 +1,9 @@
 
+
 import React from 'react';
 // @ts-ignore
 import { NavLink, useParams } from 'react-router-dom';
-import { LayoutGrid, Boxes, Database, Users, BarChart2, History, Settings, KeyRound, ChevronsLeft, ChevronsRight, Shapes } from 'lucide-react';
+import { LayoutGrid, Boxes, Database, Users, BarChart2, History, Settings, KeyRound, ChevronsLeft, ChevronsRight, Shapes, FlaskConical } from 'lucide-react';
 import { useProject } from '../contexts/ProjectContext';
 import { useUI } from '../contexts/UIContext';
 import Button from './ui/Button';
@@ -49,6 +50,7 @@ const ProjectSubNav = () => {
                  <NavItem to={`/project/${projectId}/modules`} icon={<Boxes size={20} />} label="Módulos" isCollapsed={isProjectSidebarCollapsed}/>
                  <NavItem to={`/project/${projectId}/features`} icon={<Shapes size={20} />} label="Funcionalidades" isCollapsed={isProjectSidebarCollapsed}/>
                  <NavItem to={`/project/${projectId}/datamodel`} icon={<Database size={20} />} label="Modelo de Dados" isCollapsed={isProjectSidebarCollapsed}/>
+                 <NavItem to={`/project/${projectId}/testing`} icon={<FlaskConical size={20} />} label="Testes" isCollapsed={isProjectSidebarCollapsed}/>
                  <NavItem to={`/project/${projectId}/credentials`} icon={<KeyRound size={20} />} label="Credenciais" isCollapsed={isProjectSidebarCollapsed}/>
                  <NavItem to={`/project/${projectId}/report`} icon={<BarChart2 size={20} />} label="Relatórios" isCollapsed={isProjectSidebarCollapsed}/>
             </nav>

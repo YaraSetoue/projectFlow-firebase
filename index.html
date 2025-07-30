@@ -24,54 +24,45 @@
     <link rel="stylesheet" href="https://esm.sh/react-quill@2.0.0/dist/quill.snow.css">
     <style type="text/tailwindcss">
       /* Custom dark theme styles for React Quill */
-
-      /* General editor container style */
       .dark .ql-snow {
         @apply border-slate-700;
       }
-
-      /* Toolbar style */
       .dark .ql-toolbar {
         @apply bg-slate-800 border-b border-slate-700 rounded-t-md;
       }
-
-      /* Toolbar icons style (stroke color) */
       .dark .ql-snow .ql-stroke {
         @apply stroke-slate-400;
       }
-
-      /* Toolbar icons style when selected */
-      .dark .ql-snow .ql-active .ql-stroke {
+      .dark .ql-snow .ql-fill {
+        @apply fill-slate-400;
+      }
+      .dark .ql-snow .ql-active .ql-stroke,
+      .dark .ql-snow .ql-picker-label:hover .ql-stroke,
+      .dark .ql-snow .ql-picker-item:hover .ql-stroke {
         @apply stroke-white;
       }
-
-      /* Options dropdown style (Normal, H1, H2) */
-      .dark .ql-snow .ql-picker-label {
-        @apply text-slate-400;
-      }
-
-      /* Options dropdown style when active */
       .dark .ql-snow .ql-active .ql-picker-label {
         @apply text-white;
       }
-
-      /* Main text area style */
+      .dark .ql-snow .ql-picker-label {
+        @apply text-slate-400;
+      }
+      .dark .ql-snow .ql-picker-options {
+        @apply bg-slate-800 border border-slate-700 text-slate-200;
+      }
+      .dark .ql-snow .ql-picker-item:hover {
+        @apply bg-slate-700;
+      }
       .dark .ql-container {
         @apply bg-slate-900 rounded-b-md;
       }
-
-      /* Text editor itself style */
       .dark .ql-editor {
         @apply text-slate-200;
       }
-
-      /* Placeholder text style */
       .dark .ql-editor.ql-blank::before {
         @apply text-slate-500 not-italic;
         content: 'Comece a escrever a documentação aqui...';
       }
-
-      /* Add a focus ring for consistency with other inputs */
       .dark .ql-container.ql-snow:focus-within {
         @apply ring-2 ring-brand-500 border-brand-500;
       }

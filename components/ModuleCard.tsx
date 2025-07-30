@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 // @ts-ignore
 import { useNavigate } from 'react-router-dom';
-import { Module, Task } from '../types';
+import { Module, Task, Feature } from '../types';
 import { Trash2, Pencil, Loader2, AlertTriangle, Eye } from 'lucide-react';
 import Button from './ui/Button';
 import AlertDialog from './ui/AlertDialog';
@@ -13,6 +13,7 @@ import { deleteModule } from '../services/firestoreService';
 interface ModuleCardProps {
   module: Module;
   tasks: Task[];
+  features: Feature[];
   onEdit: () => void;
   isEditor: boolean;
   projectId: string;
@@ -23,25 +24,27 @@ const cardVariants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4 } }
 };
 
-const ModuleCard = ({ module, tasks, onEdit, isEditor, projectId }: ModuleCardProps) => {
+const ModuleCard = ({ module, tasks, features, onEdit, isEditor, projectId }: ModuleCardProps) => {
     const navigate = useNavigate();
     const [isDeleting, setIsDeleting] = useState(false);
     const [error, setError] = useState('');
     const [isAlertOpen, setAlertOpen] = useState(false);
 
-    const tasksInModule = useMemo(() => 
-        tasks.filter(t => t.moduleId === module.id), 
-        [tasks, module.id]
-    );
-    
-    const completedTasks = useMemo(() => 
-        tasksInModule.filter(t => t.status === 'done'), 
-        [tasksInModule]
-    );
+    const {
+        progress,
+        completedFeaturesCount,
+        totalFeatures
+    } = useMemo(() => {
+        if (!features || features.length === 0) {
+            return { progress: 0, completedFeaturesCount: 0, totalFeatures: 0 };
+        }
+        const total = features.length;
+        const completed = features.filter(f => f.status === 'approved' || f.status === 'released').length;
+        const prog = total > 0 ? Math.round((completed / total) * 100) : 0;
+        return { progress: prog, completedFeaturesCount: completed, totalFeatures: total };
+    }, [features]);
 
-    const totalTasks = tasksInModule.length;
-    const completedCount = completedTasks.length;
-    const progress = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
+    const totalTasks = tasks.length;
 
     const colorClass = module.color ? MODULE_COLOR_MAP[module.color] : MODULE_COLOR_MAP.gray;
     const iconColorClass = module.color ? MODULE_COLOR_MAP[module.color]?.text : 'text-brand-500';
@@ -81,25 +84,29 @@ const ModuleCard = ({ module, tasks, onEdit, isEditor, projectId }: ModuleCardPr
                 <p className="text-slate-600 dark:text-slate-400 text-sm line-clamp-3 min-h-[60px]">
                     {module.description || "Nenhuma descrição fornecida."}
                 </p>
-                {totalTasks > 0 && (
+                
+                {totalFeatures > 0 ? (
                     <div className="mt-4">
-                        <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400 mb-1">
-                            <span>Progresso</span>
-                            <span>{completedCount} / {totalTasks}</span>
-                        </div>
                         <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
                             <div 
                                 className={`h-2 rounded-full transition-all duration-500 ${colorClass?.bg}`} 
                                 style={{ width: `${progress}%` }}
                             ></div>
                         </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                            <span className="font-bold text-slate-700 dark:text-slate-300">{progress}%</span> ({completedFeaturesCount} de {totalFeatures} {totalFeatures === 1 ? 'funcionalidade aprovada' : 'funcionalidades aprovadas'})
+                        </p>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {totalTasks} {totalTasks === 1 ? 'tarefa no total' : 'tarefas no total'}
+                        </p>
+                    </div>
+                ) : (
+                     <div className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400 py-4">
+                        Nenhuma funcionalidade associada.
                     </div>
                 )}
             </div>
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-b-lg border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                    {totalTasks} {totalTasks === 1 ? 'tarefa' : 'tarefas'}
-                </span>
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-b-lg border-t border-slate-100 dark:border-slate-800 flex justify-end items-center">
                 <div className="flex gap-2">
                      <Button onClick={handleViewTasks} variant="ghost" size="sm">
                         <Eye size={16} className="mr-1" />

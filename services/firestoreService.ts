@@ -291,6 +291,35 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
         const statusText = STATUS_LABELS[data.status];
         const message = `${user.displayName} moveu a tarefa "${oldTask.title}" para ${statusText}.`;
         await logActivity(projectId, 'task_status_changed', message, taskId);
+
+        // QA WORKFLOW LOGIC
+        const featureId = oldTask.featureId || data.featureId;
+        if (featureId) {
+            const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+
+            // Logic to move feature to "in_development"
+            if (oldTask.status === 'todo' && data.status === 'inprogress') {
+                const featureDoc = await getDoc(featureRef);
+                if (featureDoc.exists() && featureDoc.data().status === 'backlog') {
+                    await updateDoc(featureRef, { status: 'in_development' });
+                }
+            }
+
+            // Logic to move feature to "in_testing"
+            if (data.status === 'done') {
+                const tasksQuery = query(collection(db, 'projects', projectId, 'tasks'), where('featureId', '==', featureId));
+                const tasksSnapshot = await getDocs(tasksQuery);
+                
+                const allTasksForFeature = tasksSnapshot.docs.map(d => ({id: d.id, ...d.data()}) as Task);
+
+                // Check if all tasks for this feature are done
+                const allDone = allTasksForFeature.every(t => t.id === taskId ? data.status === 'done' : t.status === 'done');
+
+                if (allDone) {
+                    await updateDoc(featureRef, { status: 'in_testing' });
+                }
+            }
+        }
     }
 };
 
@@ -536,10 +565,11 @@ export const getModuleDocumentation = async (projectId: string, moduleId: string
 };
 
 // --- Feature Functions ---
-export const createFeature = async (projectId: string, featureData: Omit<Feature, 'id' | 'createdAt' | 'projectId'>) => {
+export const createFeature = async (projectId: string, featureData: Omit<Feature, 'id' | 'createdAt' | 'projectId' | 'status'>) => {
     await addDoc(collection(db, 'projects', projectId, 'features'), {
         ...featureData,
         projectId,
+        status: 'backlog',
         createdAt: serverTimestamp()
     });
 };
@@ -571,6 +601,31 @@ export const deleteFeature = async (projectId: string, featureId:string) => {
     // 4. Commit all batched writes
     await batch.commit();
 };
+
+export const reproveFeature = async (projectId: string, featureId: string) => {
+    const batch = writeBatch(db);
+    
+    // 1. Update the feature status back to in_development
+    const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+    batch.update(featureRef, { status: 'in_development' });
+    
+    // 2. Find all tasks associated with the feature
+    const tasksQuery = query(
+        collection(db, 'projects', projectId, 'tasks'), 
+        where('featureId', '==', featureId)
+    );
+    const tasksSnapshot = await getDocs(tasksQuery);
+
+    // 3. Re-open all tasks (set status from 'done' to 'todo')
+    tasksSnapshot.forEach(taskDoc => {
+        if (taskDoc.data().status === 'done') {
+            batch.update(taskDoc.ref, { status: 'todo' });
+        }
+    });
+
+    // 4. Commit batch
+    await batch.commit();
+}
 
 
 // --- Entity & Relationship Functions ---

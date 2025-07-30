@@ -2,15 +2,6 @@ import { Timestamp } from '@firebase/firestore';
 
 // A central place for shared TypeScript types and interfaces.
 
-export interface TaskCategory {
-  id: string;
-  projectId: string;
-  name: string;
-  color: string;
-  icon: string;
-  requiresTesting: boolean;
-}
-
 export interface TimeLog {
   userId: string;
   durationInSeconds: number;
@@ -143,7 +134,6 @@ export interface Task {
   dependencies?: TaskDependency[]; // Array of task dependency objects
   featureId?: string;
   moduleId?: string;
-  categoryId: string;
   timeLogs?: TimeLog[];
   links?: TaskLink[];
 }
