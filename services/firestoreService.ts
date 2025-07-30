@@ -1,4 +1,3 @@
-
 import { 
   collection, 
   addDoc, 
@@ -296,16 +295,28 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
     const taskDoc = await getDoc(taskRef);
     if (!taskDoc.exists()) throw new Error("Tarefa não encontrada.");
     const oldTask = taskDoc.data() as Task;
+    const newStatus = data.status || oldTask.status;
 
-    const payload: { [key: string]: any } = { ...data, updatedAt: serverTimestamp() };
+    // Reproval logic: if a task is reopened while the feature is in testing, move feature back to in_development
+    if (oldTask.status === 'done' && newStatus !== 'done') {
+        const featureId = oldTask.featureId;
+        if (featureId) {
+            const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+            const featureDoc = await getDoc(featureRef);
+            if (featureDoc.exists() && featureDoc.data().status === 'in_testing') {
+                // This is the key part: feature is reproved by reopening a task
+                await updateDoc(featureRef, { status: 'in_development' });
+            }
+        }
+    }
     
+    const payload: { [key: string]: any } = { ...data, updatedAt: serverTimestamp() };
     await updateDoc(taskRef, payload);
 
     const statusChanged = 'status' in data && data.status !== oldTask.status;
     const subStatusChanged = 'subStatus' in data && data.subStatus !== oldTask.subStatus;
 
     if (user?.displayName && (statusChanged || subStatusChanged)) {
-        const newStatus = data.status || oldTask.status;
         const newSubStatus = 'subStatus' in data ? data.subStatus : oldTask.subStatus;
         const columnName = getColumnName(newStatus, newSubStatus);
         
@@ -622,30 +633,10 @@ export const deleteFeature = async (projectId: string, featureId:string) => {
     await batch.commit();
 };
 
-export const reproveFeature = async (projectId: string, featureId: string) => {
-    const batch = writeBatch(db);
-    
-    // 1. Update the feature status back to in_development
+export const approveFeature = async (projectId: string, featureId: string) => {
     const featureRef = doc(db, 'projects', projectId, 'features', featureId);
-    batch.update(featureRef, { status: 'in_development' });
-    
-    // 2. Find all tasks associated with the feature
-    const tasksQuery = query(
-        collection(db, 'projects', projectId, 'tasks'), 
-        where('featureId', '==', featureId)
-    );
-    const tasksSnapshot = await getDocs(tasksQuery);
-
-    // 3. Re-open all tasks (set status from 'done' to 'todo')
-    tasksSnapshot.forEach(taskDoc => {
-        if (taskDoc.data().status === 'done') {
-            batch.update(taskDoc.ref, { status: 'todo' });
-        }
-    });
-
-    // 4. Commit batch
-    await batch.commit();
-}
+    await updateDoc(featureRef, { status: 'approved' });
+};
 
 
 // --- Entity & Relationship Functions ---
