@@ -125,6 +125,11 @@ export interface TaskLink {
   title: string; // A descriptive title for the link
 }
 
+export interface TaskDependency {
+  taskId: string;
+  type: 'blocking' | 'blocked_by';
+}
+
 export interface Task {
   id: string;
   projectId: string;
@@ -137,10 +142,10 @@ export interface Task {
   updatedAt: Timestamp;
   dueDate?: Timestamp | null;
   commentsCount?: number;
-  dependsOn?: string[]; // Array of task IDs this task is blocked by
+  dependencies?: TaskDependency[]; // Array of task dependency objects
   featureId?: string;
   moduleId?: string;
-  categoryId?: string;
+  categoryId: string;
   timeLogs?: TimeLog[];
   links?: TaskLink[];
 }

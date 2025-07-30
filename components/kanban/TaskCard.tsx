@@ -66,8 +66,8 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, categoryIn
   return (
     <motion.div
       {...{layoutId: task.id} as any}
-      onClick={onClick}
-      className={`group relative bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm cursor-pointer border-l-4 ${statusBorderColor} transition-all duration-200 hover:shadow-md hover:border-brand-500 ${isDragging ? 'shadow-xl rotate-1' : ''}`}
+      onClick={!isBlocked ? onClick : undefined}
+      className={`group relative bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm border-l-4 ${statusBorderColor} transition-all duration-200 hover:shadow-md hover:border-brand-500 ${isDragging ? 'shadow-xl rotate-1' : ''} ${isBlocked ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       <div 
         {...dragHandleListeners}

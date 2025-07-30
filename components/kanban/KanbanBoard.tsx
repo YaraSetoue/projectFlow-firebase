@@ -18,10 +18,12 @@ interface KanbanBoardProps {
     categoryLookup: Record<string, TaskCategory>;
 }
 
-const COLUMN_MAP: Record<SubStatus, { title: string }> = {
+const COLUMN_MAP = {
+    todo: { title: 'A Fazer' },
     executing: { title: 'Executando' },
     testing: { title: 'Teste' },
     approved: { title: 'Aprovado' },
+    done: { title: 'Concluído' },
 };
 
 const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, categoryLookup }: KanbanBoardProps) => {
@@ -53,10 +55,13 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
 
     const blockedStatusLookup = useMemo(() => {
         const lookup: Record<string, boolean> = {};
+        const tasksById = new Map(tasks.map(t => [t.id, t]));
+
         tasks.forEach(task => {
-            if (task.dependsOn && task.dependsOn.length > 0) {
-                lookup[task.id] = task.dependsOn.some(depId => {
-                    const dependencyTask = tasks.find(t => t.id === depId);
+            const blockingDeps = task.dependencies?.filter(d => d.type === 'blocked_by');
+            if (blockingDeps && blockingDeps.length > 0) {
+                lookup[task.id] = blockingDeps.some(dep => {
+                    const dependencyTask = tasksById.get(dep.taskId);
                     return dependencyTask && dependencyTask.status !== 'done';
                 });
             }
@@ -80,18 +85,16 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
 
             const isBlocked = blockedStatusLookup[taskId];
 
-            if (isBlocked && destColumn !== 'todo') {
-                setDndError(`A tarefa "${task.title}" está bloqueada e não pode ser movida.`);
+            if (isBlocked && ['executing', 'testing', 'approved', 'done'].includes(destColumn)) {
+                setDndError(`A tarefa "${task.title}" não pode ser iniciada pois está bloqueada por outras tarefas.`);
                 return;
             }
 
             // QA workflow restriction check
-            const category = task.categoryId ? categoryLookup[task.categoryId] : null;
-            if (destColumn === 'testing' || destColumn === 'approved') {
-                 if (!category || !category.requiresTesting) {
-                    setDndError(`Apenas tarefas em categorias que requerem teste podem ser movidas para "${COLUMN_MAP[destColumn as SubStatus].title}".`);
-                    return;
-                }
+            const category = categoryLookup[task.categoryId];
+            if (category && !category.requiresTesting && (destColumn === 'testing' || destColumn === 'approved')) {
+                setDndError(`Tarefas da categoria "${category.name}" não requerem teste ou aprovação.`);
+                return;
             }
 
             let newStatus: TaskStatus;

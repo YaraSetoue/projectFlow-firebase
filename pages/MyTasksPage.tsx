@@ -233,6 +233,7 @@ const MyTasksPage = () => {
                 <TaskDetailModal
                     isOpen={!!selectedTask}
                     onClose={() => setSelectedTask(null)}
+                    onNavigateToTask={setSelectedTask}
                     taskId={selectedTask.id}
                     projectId={selectedTask.projectId}
                     project={projectsMap[selectedTask.projectId]}

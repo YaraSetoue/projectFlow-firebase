@@ -1,10 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-// @ts-ignore
-import { useNavigate } from 'react-router-dom';
 import { collection, query, orderBy, Timestamp, deleteField, doc, where } from '@firebase/firestore';
 import { useFirestoreQuery, useFirestoreDocument } from '../../hooks/useFirestoreQuery';
 import { db } from '../../firebase/config';
-import { updateTask, addTaskComment, sendNotification, deleteTask, addLinkToTask, removeLinkFromTask, updateLinkInTask } from '../../services/firestoreService';
+import { updateTask, addTaskComment, sendNotification, deleteTask, addLinkToTask, removeLinkFromTask, updateLinkInTask, addTaskDependency, removeTaskDependency } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
 import { useTimeTracking, formatDuration, formatTimeAgo } from '../../utils/placeholder';
 import { Task, UserSummary, Comment, Module, TimeLog, Project, Member, TaskLink, Entity, TaskStatus, Feature, SubStatus, TaskCategory, Activity } from '../../types';
@@ -25,6 +23,7 @@ import { MODULE_COLOR_MAP } from '../../utils/styleUtils';
 interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onNavigateToTask: (task: Task) => void;
   taskId: string;
   projectId: string;
   project: Project;
@@ -92,9 +91,8 @@ const TabButton = ({
 );
 
 
-const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, taskId, projectId, project, projectMembers, allTasks, modules, entities, categories }) => {
+const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNavigateToTask, taskId, projectId, project, projectMembers, allTasks, modules, entities, categories }) => {
     const { currentUser } = useAuth();
-    const navigate = useNavigate();
     
     const taskRef = useMemo(() => doc(db, 'projects', projectId, 'tasks', taskId), [projectId, taskId]);
     const { data: realTimeTask, loading: taskLoading, error: taskFetchError } = useFirestoreDocument<Task>(taskRef);
@@ -132,7 +130,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     const [isDeleteAlertOpen, setDeleteAlertOpen] = useState(false);
 
     // Dependency states
-    const [showDependencyForm, setShowDependencyForm] = useState(false);
+    const [showAddBlockingForm, setShowAddBlockingForm] = useState(false);
+    const [showAddBlockedByForm, setShowAddBlockedByForm] = useState(false);
     const [isAddingDependency, setIsAddingDependency] = useState(false);
     
     const [activeTab, setActiveTab] = useState<ActiveTab>('activity');
@@ -156,7 +155,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
             setNewLinkTitle('');
             setActiveTab('activity');
             setEditingLinkId(null);
-            setShowDependencyForm(false);
+            setShowAddBlockingForm(false);
+            setShowAddBlockedByForm(false);
         }
     }, [isOpen, taskId, setTimerError]);
 
@@ -208,11 +208,27 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     
     const availableTasksForDependency = useMemo(() => {
         if (!realTimeTask) return [];
-        const existingDeps = realTimeTask.dependsOn || [];
-        return allTasks.filter(t => t.id !== taskId && !existingDeps.includes(t.id));
+        const existingDepIds = new Set((realTimeTask.dependencies || []).map(d => d.taskId));
+        return allTasks.filter(t => t.id !== taskId && !existingDepIds.has(t.id));
     }, [allTasks, taskId, realTimeTask]);
 
-    const dependencies = useMemo(() => (realTimeTask?.dependsOn || []).map(depId => allTasks.find(t => t.id === depId)).filter(Boolean) as Task[], [realTimeTask?.dependsOn, allTasks]);
+    const { blockedBy, blocking } = useMemo(() => {
+        const blockedByTasks: Task[] = [];
+        const blockingTasks: Task[] = [];
+        const deps = realTimeTask?.dependencies || [];
+        
+        deps.forEach(dep => {
+            const relatedTask = allTasks.find(t => t.id === dep.taskId);
+            if (relatedTask) {
+                if (dep.type === 'blocked_by') {
+                    blockedByTasks.push(relatedTask);
+                } else if (dep.type === 'blocking') {
+                    blockingTasks.push(relatedTask);
+                }
+            }
+        });
+        return { blockedBy: blockedByTasks, blocking: blockingTasks };
+    }, [realTimeTask?.dependencies, allTasks]);
     
     const totalTime = useMemo(() => {
         return (realTimeTask?.timeLogs || []).reduce((acc, log) => acc + log.durationInSeconds, 0);
@@ -223,36 +239,54 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     
     const displayError = apiError || timerError;
 
-    const handleAddDependency = async (dependencyId: string) => {
-        if (!dependencyId || !isEditor || !realTimeTask) return;
+    const handleAddBlockingTask = async (targetTaskId: string) => {
+        if (!targetTaskId || !isEditor) return;
         setIsAddingDependency(true);
         setApiError(null);
         try {
-            const newDeps = [...(realTimeTask.dependsOn || []), dependencyId];
-            await updateTask(projectId, taskId, { dependsOn: newDeps });
-            setShowDependencyForm(false);
+            await addTaskDependency(projectId, taskId, targetTaskId);
+            setShowAddBlockingForm(false);
         } catch (error) {
-            console.error("Failed to add dependency:", error);
             setApiError("Falha ao adicionar dependência.");
         } finally {
             setIsAddingDependency(false);
         }
     };
-
-    const handleRemoveDependency = async (dependencyId: string) => {
-        if (!isEditor || !realTimeTask) return;
+    
+    const handleAddBlockedByTask = async (sourceTaskId: string) => {
+        if (!sourceTaskId || !isEditor) return;
+        setIsAddingDependency(true);
         setApiError(null);
-        const originalDeps = realTimeTask.dependsOn || [];
-        // Optimistic UI update can be done here if needed
         try {
-            const newDeps = originalDeps.filter(id => id !== dependencyId);
-            await updateTask(projectId, taskId, { dependsOn: newDeps });
+            await addTaskDependency(projectId, sourceTaskId, taskId);
+            setShowAddBlockedByForm(false);
         } catch (error) {
-            console.error("Failed to remove dependency:", error);
-            setApiError("Falha ao remover dependência.");
-            // Revert optimistic UI update here
+            setApiError("Falha ao adicionar dependência.");
+        } finally {
+            setIsAddingDependency(false);
         }
     };
+    
+    const handleRemoveBlockingTask = async (targetTaskId: string) => {
+        if (!isEditor) return;
+        setApiError(null);
+        try {
+            await removeTaskDependency(projectId, taskId, targetTaskId);
+        } catch (error) {
+            setApiError("Falha ao remover dependência.");
+        }
+    };
+    
+    const handleRemoveBlockedByTask = async (sourceTaskId: string) => {
+        if (!isEditor) return;
+        setApiError(null);
+        try {
+            await removeTaskDependency(projectId, sourceTaskId, taskId);
+        } catch (error) {
+            setApiError("Falha ao remover dependência.");
+        }
+    };
+
 
     const handleUpdate = async () => {
         if (!currentUser || !isEditor || !editedTask || !realTimeTask) return;
@@ -274,13 +308,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                 dueDate: editedTask.dueDate || null,
                 status: editedTask.status,
                 subStatus: editedTask.subStatus || null,
+                categoryId: editedTask.categoryId
             };
-
-            if (editedTask.categoryId) {
-                updatePayload.categoryId = editedTask.categoryId;
-            } else {
-                updatePayload.categoryId = deleteField();
-            }
 
             if (editedTask.featureId) {
                 updatePayload.featureId = editedTask.featureId;
@@ -468,7 +497,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
     const onStopTimer = () => { if (isEditor) handleStopTimer(); };
 
     const commentsCount = comments?.length ?? 0;
-    const dependenciesCount = realTimeTask?.dependsOn?.length ?? 0;
+    const dependenciesCount = realTimeTask?.dependencies?.length ?? 0;
     const linksCount = realTimeTask?.links?.length ?? 0;
     const activityCount = commentsCount + (activities?.length || 0);
 
@@ -603,41 +632,62 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                                 </div>
                             )}
                            {activeTab === 'dependencies' && (
-                                <div className="space-y-2">
-                                    {dependencies.map(dep => (
-                                        <div key={dep.id} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-sm group">
-                                            <span className="truncate" title={dep.title}>{dep.title}</span>
-                                            <div className="flex items-center">
-                                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate(`/project/${project.id}?task=${dep.id}`)} title="Ver tarefa">
-                                                    <Eye size={14}/>
-                                                </Button>
-                                                {isEditor && (
-                                                    <button type="button" onClick={() => handleRemoveDependency(dep.id)} className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40">
-                                                        <X size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
+                                <div className="space-y-6">
+                                    {/* Section 1: This task is BLOCKED BY... */}
+                                    <div>
+                                        <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Bloqueada Por</h4>
+                                        <p className="text-xs text-slate-500 mb-3">As tarefas abaixo devem ser concluídas antes que esta possa ser iniciada.</p>
+                                        <div className="space-y-2">
+                                            {blockedBy.map(dep => (
+                                                <div key={dep.id} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-sm group">
+                                                    <span className="truncate" title={dep.title}>{dep.title}</span>
+                                                    <div className="flex items-center">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onNavigateToTask(dep)} title="Ver tarefa"><Eye size={14}/></Button>
+                                                        {isEditor && <button type="button" onClick={() => handleRemoveBlockedByTask(dep.id)} className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"><X size={16} /></button>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {blockedBy.length === 0 && !showAddBlockedByForm && <p className="text-xs text-slate-500">Nenhuma tarefa bloqueadora.</p>}
+                                            {isEditor && !showAddBlockedByForm && <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowAddBlockedByForm(true)}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Tarefa Bloqueadora</Button>}
+                                            {isEditor && showAddBlockedByForm && (
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <select className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm" value="" onChange={e => handleAddBlockedByTask(e.target.value)} disabled={isAddingDependency}>
+                                                        <option value="" disabled>Selecione uma tarefa...</option>
+                                                        {availableTasksForDependency.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                                    </select>
+                                                    <Button variant="ghost" onClick={() => setShowAddBlockedByForm(false)}>Cancelar</Button>
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                    {dependenciesCount === 0 && !showDependencyForm && <p className="text-xs text-slate-500">Nenhuma dependência.</p>}
-                                    {isEditor && !showDependencyForm && (
-                                        <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowDependencyForm(true)}>
-                                            <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Dependência
-                                        </Button>
-                                    )}
-                                    {isEditor && showDependencyForm && (
-                                        <div className="flex items-center gap-2 mt-2">
-                                        <select
-                                            className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm"
-                                            value=""
-                                            onChange={e => handleAddDependency(e.target.value)} disabled={isAddingDependency}
-                                        >
-                                            <option value="" disabled>Selecione uma tarefa...</option>
-                                            {availableTasksForDependency.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-                                        </select>
-                                        <Button variant="ghost" onClick={() => setShowDependencyForm(false)}>Cancelar</Button>
+                                    </div>
+
+                                    {/* Section 2: This task BLOCKS... */}
+                                    <div>
+                                        <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Bloqueando</h4>
+                                        <p className="text-xs text-slate-500 mb-3">Esta tarefa deve ser concluída antes que as tarefas abaixo possam ser iniciadas.</p>
+                                        <div className="space-y-2">
+                                            {blocking.map(dep => (
+                                                 <div key={dep.id} className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-sm group">
+                                                    <span className="truncate" title={dep.title}>{dep.title}</span>
+                                                    <div className="flex items-center">
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onNavigateToTask(dep)} title="Ver tarefa"><Eye size={14}/></Button>
+                                                        {isEditor && <button type="button" onClick={() => handleRemoveBlockingTask(dep.id)} className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"><X size={16} /></button>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {blocking.length === 0 && !showAddBlockingForm && <p className="text-xs text-slate-500">Não está bloqueando nenhuma tarefa.</p>}
+                                            {isEditor && !showAddBlockingForm && <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowAddBlockingForm(true)}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Tarefa para Bloquear</Button>}
+                                            {isEditor && showAddBlockingForm && (
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <select className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm" value="" onChange={e => handleAddBlockingTask(e.target.value)} disabled={isAddingDependency}>
+                                                        <option value="" disabled>Selecione uma tarefa...</option>
+                                                        {availableTasksForDependency.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                                    </select>
+                                                    <Button variant="ghost" onClick={() => setShowAddBlockingForm(false)}>Cancelar</Button>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             )}
                             {activeTab === 'links' && (
@@ -766,8 +816,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                                 value={editedTask.categoryId || ''}
                                 onChange={e => setEditedTask({ ...editedTask, categoryId: e.target.value })}
                                 disabled={!isEditor || !categories}
+                                required
                             >
-                                <option value="">Nenhuma Categoria</option>
                                 {categories.map(cat => (
                                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                                 ))}

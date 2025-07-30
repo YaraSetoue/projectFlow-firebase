@@ -1,4 +1,3 @@
-
 import { 
   collection, 
   addDoc, 
@@ -21,7 +20,7 @@ import {
 } from "@firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "@firebase/storage";
 import { auth, db } from '../firebase/config';
-import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, TaskCategory, Feature, SubStatus, Activity, ActivityType } from '../types';
+import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, TaskCategory, Feature, SubStatus, Activity, ActivityType, TaskDependency } from '../types';
 import { getSeedData } from "../utils/seed";
 
 // --- Activity Logging ---
@@ -276,7 +275,7 @@ export const createTask = async (projectId: string, projectName: string, taskDat
         assignee: null,
         dueDate: null,
         commentsCount: 0,
-        dependsOn: [],
+        dependencies: [],
         timeLogs: [],
         links: [],
         ...taskData, // Spread the provided data. This will overwrite defaults and add optional fields like featureId if they exist.
@@ -424,6 +423,47 @@ export const updateLinkInTask = async (projectId: string, taskId: string, update
             throw new Error("Link não encontrado para atualizar.");
         }
     });
+};
+
+// --- Bidirectional Dependency Functions ---
+export const addTaskDependency = async (projectId: string, sourceTaskId: string, targetTaskId: string) => {
+    // sourceTask blocks targetTask
+    const sourceTaskRef = doc(db, 'projects', projectId, 'tasks', sourceTaskId);
+    const targetTaskRef = doc(db, 'projects', projectId, 'tasks', targetTaskId);
+
+    const batch = writeBatch(db);
+
+    // Add { type: 'blocking', taskId: targetTaskId } to source task
+    batch.update(sourceTaskRef, {
+        dependencies: arrayUnion({ type: 'blocking', taskId: targetTaskId })
+    });
+
+    // Add { type: 'blocked_by', taskId: sourceTaskId } to target task
+    batch.update(targetTaskRef, {
+        dependencies: arrayUnion({ type: 'blocked_by', taskId: sourceTaskId })
+    });
+
+    await batch.commit();
+};
+
+export const removeTaskDependency = async (projectId: string, sourceTaskId: string, targetTaskId: string) => {
+    // sourceTask no longer blocks targetTask
+    const sourceTaskRef = doc(db, 'projects', projectId, 'tasks', sourceTaskId);
+    const targetTaskRef = doc(db, 'projects', projectId, 'tasks', targetTaskId);
+
+    const batch = writeBatch(db);
+
+    // Remove { type: 'blocking', taskId: targetTaskId } from source task
+    batch.update(sourceTaskRef, {
+        dependencies: arrayRemove({ type: 'blocking', taskId: targetTaskId })
+    });
+
+    // Remove { type: 'blocked_by', taskId: sourceTaskId } from target task
+    batch.update(targetTaskRef, {
+        dependencies: arrayRemove({ type: 'blocked_by', taskId: sourceTaskId })
+    });
+    
+    await batch.commit();
 };
 
 // --- Timer Functions ---
@@ -746,7 +786,7 @@ export const seedDatabase = async (currentUser: User) => {
             assignee: task.assignee,
             commentsCount: task.commentsCount,
             dueDate: task.dueDate || null,
-            dependsOn: [],
+            dependencies: [],
             links: [],
             timeLogs: [],
             moduleId: moduleId,

@@ -247,6 +247,7 @@ const DataModelPage = () => {
                      <TaskDetailModal
                         isOpen={!!selectedTask}
                         onClose={handleCloseTaskModal}
+                        onNavigateToTask={setSelectedTask}
                         taskId={selectedTask.id}
                         projectId={projectId}
                         project={project}
