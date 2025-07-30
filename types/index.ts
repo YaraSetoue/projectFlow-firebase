@@ -140,7 +140,7 @@ export interface Task {
   dependsOn?: string[]; // Array of task IDs this task is blocked by
   featureId?: string;
   moduleId?: string;
-  categoryId: string;
+  categoryId?: string;
   timeLogs?: TimeLog[];
   links?: TaskLink[];
 }

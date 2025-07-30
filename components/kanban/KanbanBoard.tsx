@@ -18,12 +18,10 @@ interface KanbanBoardProps {
     categoryLookup: Record<string, TaskCategory>;
 }
 
-const COLUMN_MAP = {
-    todo: { title: 'A Fazer' },
+const COLUMN_MAP: Record<SubStatus, { title: string }> = {
     executing: { title: 'Executando' },
     testing: { title: 'Teste' },
     approved: { title: 'Aprovado' },
-    done: { title: 'Concluído' },
 };
 
 const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, categoryLookup }: KanbanBoardProps) => {
@@ -88,10 +86,12 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
             }
 
             // QA workflow restriction check
-            const category = categoryLookup[task.categoryId];
-            if (category && !category.requiresTesting && (destColumn === 'testing' || destColumn === 'approved')) {
-                setDndError(`Tarefas da categoria "${category.name}" não requerem teste ou aprovação.`);
-                return;
+            const category = task.categoryId ? categoryLookup[task.categoryId] : null;
+            if (destColumn === 'testing' || destColumn === 'approved') {
+                 if (!category || !category.requiresTesting) {
+                    setDndError(`Apenas tarefas em categorias que requerem teste podem ser movidas para "${COLUMN_MAP[destColumn as SubStatus].title}".`);
+                    return;
+                }
             }
 
             let newStatus: TaskStatus;

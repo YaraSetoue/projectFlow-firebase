@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 // @ts-ignore
 import { useNavigate } from 'react-router-dom';
@@ -275,8 +274,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                 dueDate: editedTask.dueDate || null,
                 status: editedTask.status,
                 subStatus: editedTask.subStatus || null,
-                categoryId: editedTask.categoryId
             };
+
+            if (editedTask.categoryId) {
+                updatePayload.categoryId = editedTask.categoryId;
+            } else {
+                updatePayload.categoryId = deleteField();
+            }
 
             if (editedTask.featureId) {
                 updatePayload.featureId = editedTask.featureId;
@@ -762,8 +766,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, task
                                 value={editedTask.categoryId || ''}
                                 onChange={e => setEditedTask({ ...editedTask, categoryId: e.target.value })}
                                 disabled={!isEditor || !categories}
-                                required
                             >
+                                <option value="">Nenhuma Categoria</option>
                                 {categories.map(cat => (
                                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                                 ))}

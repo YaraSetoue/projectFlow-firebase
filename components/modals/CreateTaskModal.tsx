@@ -27,7 +27,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState<UserSummary | null>(null);
-  const [categoryId, setCategoryId] = useState<string>(categories[0]?.id || '');
+  const [categoryId, setCategoryId] = useState<string>('');
   const [featureId, setFeatureId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -47,7 +47,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       setTitle('');
       setDescription('');
       setAssignee(null);
-      setCategoryId(categories[0]?.id || '');
+      setCategoryId('');
       setFeatureId('');
       setDueDate('');
       setError('');
@@ -67,10 +67,6 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       setError("O título da tarefa é obrigatório.");
       return;
     }
-    if (!categoryId) {
-        setError("A categoria é obrigatória.");
-        return;
-    }
     if (!currentUser || !projectId) {
       setError("Erro de autenticação ou ID do projeto ausente. Tente recarregar a página.");
       return;
@@ -83,8 +79,11 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       const taskPayload: { [key: string]: any } = {
         title: title,
         description: description,
-        categoryId: categoryId,
       };
+      
+      if (categoryId) {
+        taskPayload.categoryId = categoryId;
+      }
   
       if (assignee) {
         taskPayload.assignee = assignee;
@@ -149,16 +148,16 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="categoryId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Categoria <span className="text-red-500">*</span>
+                    Categoria
                   </label>
                   <select
                     id="categoryId"
                     value={categoryId}
                     onChange={(e) => setCategoryId(e.target.value)}
                     disabled={isLoading || !categories}
-                    required
                     className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                   >
+                    <option value="">Nenhuma Categoria</option>
                     {categories.map(cat => (
                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
@@ -258,7 +257,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                 <Button type="button" variant="ghost" onClick={handleClose} disabled={isLoading}>
                     Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading || !title.trim() || !categoryId}>
+                <Button type="submit" disabled={isLoading || !title.trim()}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Criar Tarefa
                 </Button>
