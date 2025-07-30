@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { XCircle, AlertTriangle } from 'lucide-react';
 
 import KanbanColumn from './KanbanColumn';
-import { Task, TaskStatus, User, Module, TaskCategory, SubStatus } from '../../types';
+import { Task, TaskStatus, User, Module } from '../../types';
 import { updateTask, stopTimer } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -13,20 +13,10 @@ interface KanbanBoardProps {
     tasks: Task[];
     projectId: string;
     onTaskClick: (task: Task) => void;
-    categories: TaskCategory[];
     moduleLookup: Record<string, Module>;
-    categoryLookup: Record<string, TaskCategory>;
 }
 
-const COLUMN_MAP = {
-    todo: { title: 'A Fazer' },
-    executing: { title: 'Executando' },
-    testing: { title: 'Teste' },
-    approved: { title: 'Aprovado' },
-    done: { title: 'Concluído' },
-};
-
-const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, categoryLookup }: KanbanBoardProps) => {
+const KanbanBoard = ({ tasks, projectId, onTaskClick, moduleLookup }: KanbanBoardProps) => {
     const { currentUser } = useAuth();
     const [dndError, setDndError] = useState<string | null>(null);
 
@@ -38,15 +28,11 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
     );
 
     const tasksByColumn = useMemo(() => {
-        const initialColumns: Record<string, Task[]> = { todo: [], executing: [], testing: [], approved: [], done: [] };
+        const initialColumns: Record<TaskStatus, Task[]> = { todo: [], inprogress: [], done: [] };
         
         return tasks.reduce((acc, task) => {
-            let columnId: string = task.status;
-            if (task.status === 'inprogress') {
-                columnId = task.subStatus || 'executing';
-            }
-            if (acc[columnId]) {
-                acc[columnId].push(task);
+            if (acc[task.status]) {
+                acc[task.status].push(task);
             }
             return acc;
         }, initialColumns);
@@ -78,36 +64,16 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
 
         if (over && active.id !== over.id) {
             const taskId = active.id as string;
-            const destColumn = over.data.current?.sortable.containerId || over.id;
+            const newStatus = over.data.current?.sortable.containerId || over.id as TaskStatus;
             const task = tasks.find(t => t.id === taskId);
 
             if (!task) return;
+            if (task.status === newStatus) return;
 
             const isBlocked = blockedStatusLookup[taskId];
 
-            if (isBlocked && ['executing', 'testing', 'approved', 'done'].includes(destColumn)) {
+            if (isBlocked && (newStatus === 'inprogress' || newStatus === 'done')) {
                 setDndError(`A tarefa "${task.title}" não pode ser iniciada pois está bloqueada por outras tarefas.`);
-                return;
-            }
-
-            // QA workflow restriction check
-            const category = categoryLookup[task.categoryId];
-            if (category && !category.requiresTesting && (destColumn === 'testing' || destColumn === 'approved')) {
-                setDndError(`Tarefas da categoria "${category.name}" não requerem teste ou aprovação.`);
-                return;
-            }
-
-            let newStatus: TaskStatus;
-            let newSubStatus: SubStatus | null = null;
-
-            if (destColumn === 'todo' || destColumn === 'done') {
-                newStatus = destColumn;
-                newSubStatus = null;
-            } else if (['executing', 'testing', 'approved'].includes(destColumn)) {
-                newStatus = 'inprogress';
-                newSubStatus = destColumn as SubStatus;
-            } else {
-                // Invalid drop column
                 return;
             }
 
@@ -116,7 +82,7 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
                     await stopTimer();
                 }
                 
-                await updateTask(projectId, taskId, { status: newStatus, subStatus: newSubStatus });
+                await updateTask(projectId, taskId, { status: newStatus });
             
             } catch (err: any) {
                 console.error("Failed to update task status:", err);
@@ -159,30 +125,20 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
                                 onTaskClick={onTaskClick}
                                 blockedStatusLookup={blockedStatusLookup}
                                 moduleLookup={moduleLookup}
-                                categoryLookup={categoryLookup}
                                 currentUser={currentUser}
                             />
                         </div>
 
-                        <div className="flex-shrink-0 bg-slate-100/50 dark:bg-slate-900 rounded-lg p-4">
-                             <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4 px-2">Em Andamento</h2>
-                             <div className="flex gap-6">
-                                {(['executing', 'testing', 'approved'] as const).map((status) => (
-                                    <div key={status} className="w-80 h-full">
-                                        <KanbanColumn
-                                            id={status}
-                                            title={COLUMN_MAP[status].title}
-                                            tasks={tasksByColumn[status] || []}
-                                            onTaskClick={onTaskClick}
-                                            blockedStatusLookup={blockedStatusLookup}
-                                            moduleLookup={moduleLookup}
-                                            categoryLookup={categoryLookup}
-                                            currentUser={currentUser}
-                                            isSubColumn={true}
-                                        />
-                                    </div>
-                                ))}
-                             </div>
+                         <div className="w-80 flex-shrink-0 h-full">
+                             <KanbanColumn
+                                id="inprogress"
+                                title="Em Andamento"
+                                tasks={tasksByColumn.inprogress || []}
+                                onTaskClick={onTaskClick}
+                                blockedStatusLookup={blockedStatusLookup}
+                                moduleLookup={moduleLookup}
+                                currentUser={currentUser}
+                            />
                         </div>
 
                         <div className="w-80 flex-shrink-0 h-full">
@@ -193,7 +149,6 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, categories, moduleLookup, 
                                 onTaskClick={onTaskClick}
                                 blockedStatusLookup={blockedStatusLookup}
                                 moduleLookup={moduleLookup}
-                                categoryLookup={categoryLookup}
                                 currentUser={currentUser}
                             />
                         </div>

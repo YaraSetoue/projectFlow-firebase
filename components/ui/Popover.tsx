@@ -18,13 +18,23 @@ const Popover: React.FC<PopoverProps> = ({ isOpen, onClose, trigger, children, c
 
   useLayoutEffect(() => {
     if (isOpen) {
-      // Defer position calculation to the next frame. This allows the browser
-      // to render the popover and calculate its dimensions before we try to
-      // measure it, fixing issues where it appears in the wrong place on first open.
       const frameId = requestAnimationFrame(() => {
         if (triggerRef.current && contentRef.current) {
           const triggerRect = triggerRef.current.getBoundingClientRect();
-          const popoverWidth = contentRef.current.offsetWidth;
+          const popoverContent = contentRef.current;
+          
+          let popoverWidth: number;
+          // A simple regex to check for Tailwind-like width classes (e.g., w-48, w-full, w-1/2)
+          const useTriggerWidth = !className || !/w-/.test(className);
+          let styleWidth: string | undefined = undefined;
+
+          if (useTriggerWidth) {
+              popoverWidth = triggerRect.width;
+              styleWidth = `${triggerRect.width}px`;
+          } else {
+              popoverWidth = popoverContent.offsetWidth;
+          }
+          
           const viewportWidth = window.innerWidth;
 
           let left: number;
@@ -37,7 +47,7 @@ const Popover: React.FC<PopoverProps> = ({ isOpen, onClose, trigger, children, c
           } else { // 'left' is default
             left = triggerRect.left;
           }
-
+          
           // Adjust for viewport overflow
           if (left + popoverWidth > viewportWidth - 8) {
             left = viewportWidth - popoverWidth - 8;
@@ -46,11 +56,16 @@ const Popover: React.FC<PopoverProps> = ({ isOpen, onClose, trigger, children, c
             left = 8;
           }
 
-          setPositionStyles({
+          const newStyles: React.CSSProperties = {
             position: 'fixed',
             top: `${top}px`,
             left: `${left}px`,
-          });
+          };
+          if (styleWidth) {
+              newStyles.width = styleWidth;
+          }
+
+          setPositionStyles(newStyles);
         }
       });
 

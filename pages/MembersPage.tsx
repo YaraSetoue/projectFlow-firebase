@@ -1,9 +1,10 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { collection, query, where, orderBy, getDocs } from '@firebase/firestore';
-import { Users, UserPlus, Send, Loader2, Trash2, XCircle } from 'lucide-react';
+import { Users, UserPlus, Send, Loader2, Trash2, XCircle, ChevronDown, Check } from 'lucide-react';
 
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
@@ -16,6 +17,7 @@ import ConnectionErrorState from '../components/ui/ConnectionErrorState';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Avatar from '../components/ui/Avatar';
+import Popover from '../components/ui/Popover';
 import AlertDialog from '../components/ui/AlertDialog';
 
 const MembersPage = () => {
@@ -40,6 +42,10 @@ const MembersPage = () => {
     const [inviteError, setInviteError] = useState('');
     const [inviteSuccess, setInviteSuccess] = useState('');
     
+    // Popover states
+    const [isInviteRoleOpen, setIsInviteRoleOpen] = useState(false);
+    const [editingMemberRole, setEditingMemberRole] = useState<string | null>(null);
+
     const [busyState, setBusyState] = useState<{ [key: string]: boolean }>({});
     const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
 
@@ -115,7 +121,8 @@ const MembersPage = () => {
     }
 
     const handleRoleChange = async (memberUid: string, newRole: MemberRole) => {
-         setBusyState(prev => ({ ...prev, [memberUid]: true }));
+        setEditingMemberRole(null);
+        setBusyState(prev => ({ ...prev, [memberUid]: true }));
         try {
             await updateMemberRole(projectId, memberUid, newRole);
             // The project listener will trigger a re-fetch of members
@@ -189,13 +196,20 @@ const MembersPage = () => {
                                         {busyState[member.uid] ? <Loader2 className="animate-spin" /> : (
                                             isOwner && member.role !== 'owner' ? (
                                                 <>
-                                                    <select 
-                                                        value={member.role}
-                                                        onChange={(e) => handleRoleChange(member.uid, e.target.value as MemberRole)}
-                                                        className="h-9 rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
-                                                    >
-                                                        {MEMBER_ROLES.map(role => <option key={role} value={role} className="capitalize">{role}</option>)}
-                                                    </select>
+                                                    <Popover isOpen={editingMemberRole === member.uid} onClose={() => setEditingMemberRole(null)} trigger={
+                                                        <Button type="button" variant="outline" className="w-32 justify-between text-left font-normal capitalize" onClick={() => setEditingMemberRole(member.uid)}>
+                                                            {member.role} <ChevronDown size={16}/>
+                                                        </Button>
+                                                    }>
+                                                        <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-1">
+                                                            {MEMBER_ROLES.map(role => (
+                                                                <div key={role} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => handleRoleChange(member.uid, role)}>
+                                                                    <span className="capitalize">{role}</span>
+                                                                    {member.role === role && <Check className="h-4 w-4 text-brand-500"/>}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </Popover>
                                                     <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40" onClick={() => setMemberToRemove(member)}><Trash2 size={16}/></Button>
                                                 </>
                                             ) : (
@@ -221,9 +235,20 @@ const MembersPage = () => {
                                 </div>
                                 <div>
                                     <label htmlFor="invite-role" className="sr-only">Papel</label>
-                                    <select id="invite-role" value={inviteRole} onChange={e => setInviteRole(e.target.value as MemberRole)} disabled={isInviting} className="h-10 w-full rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500">
-                                         {MEMBER_ROLES.map(role => <option key={role} value={role} className="capitalize">{role}</option>)}
-                                    </select>
+                                    <Popover isOpen={isInviteRoleOpen} onClose={() => setIsInviteRoleOpen(false)} trigger={
+                                        <Button type="button" variant="outline" className="w-full justify-between text-left font-normal capitalize" onClick={() => setIsInviteRoleOpen(true)} disabled={isInviting}>
+                                            {inviteRole} <ChevronDown size={16}/>
+                                        </Button>
+                                    }>
+                                        <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-1">
+                                            {MEMBER_ROLES.map(role => (
+                                                <div key={role} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setInviteRole(role); setIsInviteRoleOpen(false); }}>
+                                                    <span className="capitalize">{role}</span>
+                                                    {inviteRole === role && <Check className="h-4 w-4 text-brand-500"/>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </Popover>
                                 </div>
                                 <Button type="submit" className="w-full" disabled={isInviting || !inviteEmail}>
                                     {isInviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}

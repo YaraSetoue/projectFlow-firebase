@@ -3,13 +3,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { collection, query, orderBy, where, getDocs } from '@firebase/firestore';
-import { PlusCircle, Settings, Loader2, LayoutGrid, List } from 'lucide-react';
+import { PlusCircle, Settings, Loader2, LayoutGrid, List, ChevronDown, Check } from 'lucide-react';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Task, Member, Module, User, Entity, TaskStatus, Feature, TaskCategory } from '../types';
+import { Task, Member, Module, User, Entity, TaskStatus, Feature } from '../types';
 import KanbanBoard from '../components/kanban/KanbanBoard';
 import TaskListView from '../components/views/TaskListView';
 import Button from '../components/ui/Button';
+import Popover from '../components/ui/Popover';
 import CreateTaskModal from '../components/modals/CreateTaskModal';
 import TaskDetailModal from '../components/modals/TaskDetailModal';
 import ProjectSettingsModal from '../components/modals/ProjectSettingsModal';
@@ -111,6 +112,10 @@ const ProjectDetailPage = () => {
     const [membersLoading, setMembersLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
     const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
+    
+    // Popover states
+    const [isModuleFilterOpen, setIsModuleFilterOpen] = useState(false);
+    const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedModuleId = searchParams.get('module') || 'all';
@@ -146,12 +151,6 @@ const ProjectDetailPage = () => {
     );
     const { data: modules, loading: modulesLoading } = useFirestoreQuery<Module>(modulesQuery);
 
-    const categoriesQuery = useMemo(() =>
-        query(collection(db, 'projects', projectId, 'taskCategories'), orderBy('name', 'asc')),
-        [projectId]
-    );
-    const { data: categories, loading: categoriesLoading } = useFirestoreQuery<TaskCategory>(categoriesQuery);
-    
     const entitiesQuery = useMemo(() =>
         query(collection(db, 'projects', projectId, 'entities'), orderBy('name', 'asc')),
         [projectId]
@@ -257,21 +256,32 @@ const ProjectDetailPage = () => {
         }
         return lookup;
     }, [modules]);
-
-    const categoryLookup = useMemo(() => {
-        const lookup: Record<string, TaskCategory> = {};
-        if (categories) {
-            categories.forEach(category => {
-                lookup[category.id] = category;
-            });
-        }
-        return lookup;
-    }, [categories]);
     
+    const moduleFilterOptions = useMemo(() => [
+        { id: 'all', name: 'Todos os Módulos' },
+        { id: 'none', name: 'Tarefas sem Módulo' },
+        ...(modules || [])
+    ], [modules]);
+
+    const statusFilterOptions = [
+        { id: 'all', name: 'Todos os Status' },
+        { id: 'todo', name: 'A Fazer' },
+        { id: 'inprogress', name: 'Em Andamento' },
+        { id: 'done', name: 'Concluído' },
+    ];
+    
+    const selectedModuleName = useMemo(() => {
+        return moduleFilterOptions.find(opt => opt.id === selectedModuleId)?.name || 'Todos os Módulos';
+    }, [selectedModuleId, moduleFilterOptions]);
+
+    const selectedStatusName = useMemo(() => {
+        return statusFilterOptions.find(opt => opt.id === statusFilter)?.name || 'Todos os Status';
+    }, [statusFilter]);
+
     // State and logic for TaskListView
     const { sortedTasks, requestSort, sortConfig } = useTaskSorter(filteredTasks, projectMembers);
     
-    const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading || featuresLoading || categoriesLoading;
+    const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading || featuresLoading;
 
     return (
         <motion.div
@@ -290,39 +300,51 @@ const ProjectDetailPage = () => {
                 </div>
                 <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <div className="flex flex-col sm:flex-row items-stretch gap-2">
-                        <select
-                            id="module-filter"
-                            value={selectedModuleId}
-                            onChange={(e) => setSearchParams({ module: e.target.value })}
-                            className="w-full sm:w-auto h-9 px-3 rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                            disabled={modulesLoading}
-                        >
-                            <option value="all">Todos os Módulos</option>
-                            <option value="none">Tarefas sem Módulo</option>
-                            {modules?.map(module => (
-                                <option key={module.id} value={module.id}>{module.name}</option>
-                            ))}
-                        </select>
-                        <select
-                            id="status-filter"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value as 'all' | TaskStatus)}
-                            className="w-full sm:w-auto h-9 px-3 rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                            disabled={loading}
-                        >
-                            <option value="all">Todos os Status</option>
-                            <option value="todo">A Fazer</option>
-                            <option value="inprogress">Em Andamento</option>
-                            <option value="done">Concluído</option>
-                        </select>
+                        <Popover
+                            isOpen={isModuleFilterOpen}
+                            onClose={() => setIsModuleFilterOpen(false)}
+                            trigger={
+                                <Button type="button" variant="outline" className="w-full sm:w-48 justify-between text-left font-normal" onClick={() => setIsModuleFilterOpen(true)} disabled={modulesLoading}>
+                                    <span className="truncate">{selectedModuleName}</span>
+                                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                                </Button>
+                            }>
+                             <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                {moduleFilterOptions.map(opt => (
+                                    <div key={opt.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setSearchParams({ module: opt.id }); setIsModuleFilterOpen(false); }}>
+                                        <span className="truncate">{opt.name}</span>
+                                        {selectedModuleId === opt.id && <Check className="h-4 w-4 text-brand-500" />}
+                                    </div>
+                                ))}
+                            </div>
+                        </Popover>
+                        
+                         <Popover
+                            isOpen={isStatusFilterOpen}
+                            onClose={() => setIsStatusFilterOpen(false)}
+                            trigger={
+                                <Button type="button" variant="outline" className="w-full sm:w-48 justify-between text-left font-normal" onClick={() => setIsStatusFilterOpen(true)} disabled={loading}>
+                                    <span className="truncate">{selectedStatusName}</span>
+                                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                                </Button>
+                            }>
+                             <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                {statusFilterOptions.map(opt => (
+                                    <div key={opt.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setStatusFilter(opt.id as any); setIsStatusFilterOpen(false); }}>
+                                        <span className="truncate">{opt.name}</span>
+                                        {statusFilter === opt.id && <Check className="h-4 w-4 text-brand-500" />}
+                                    </div>
+                                ))}
+                            </div>
+                        </Popover>
                     </div>
                     <div className="flex items-center gap-2">
                         <Button 
                             onClick={() => setCreateTaskModalOpen(true)} 
                             size="sm"
                             className="flex-1"
-                            disabled={!isEditor || categoriesLoading || (categories && categories.length === 0)}
-                            title={!isEditor ? "Apenas editores ou proprietários podem criar tarefas." : (categories && categories.length === 0) ? "Crie uma categoria de tarefa nas configurações do projeto primeiro." : ""}
+                            disabled={!isEditor}
+                            title={!isEditor ? "Apenas editores ou proprietários podem criar tarefas." : ""}
                         >
                             <PlusCircle className="mr-2 h-4 w-4" /> Nova Tarefa
                         </Button>
@@ -346,7 +368,7 @@ const ProjectDetailPage = () => {
                  ) : tasksError ? (
                     <div className="p-4 sm:p-6 lg:p-8"><ConnectionErrorState error={tasksError} context="tarefas do projeto" /></div>
                  ) : viewMode === 'board' ? (
-                     <div className="px-4 sm:px-6 lg:px-8 py-6 h-full"><KanbanBoard tasks={filteredTasks} projectId={projectId} onTaskClick={setSelectedTask} categories={categories || []} moduleLookup={moduleLookup} categoryLookup={categoryLookup}/></div>
+                     <div className="px-4 sm:px-6 lg:px-8 py-6 h-full"><KanbanBoard tasks={filteredTasks} projectId={projectId} onTaskClick={setSelectedTask} moduleLookup={moduleLookup}/></div>
                 ) : (
                     sortedTasks.length > 0 ? (
                         <div className="pt-6 px-4 sm:px-6 lg:px-8 pb-8">
@@ -377,7 +399,6 @@ const ProjectDetailPage = () => {
                     projectMembers={projectMembers}
                     modules={modules || []}
                     features={features || []}
-                    categories={categories || []}
                 />
             )}
             
@@ -393,7 +414,6 @@ const ProjectDetailPage = () => {
                     allTasks={allTasksForDependencies || []}
                     modules={modules || []}
                     entities={entities || []}
-                    categories={categories || []}
                 />
             )}
 

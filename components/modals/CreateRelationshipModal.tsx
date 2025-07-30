@@ -1,10 +1,12 @@
+
 import React, { useState } from 'react';
 import { createRelationship } from '../../services/firestoreService';
 import { Entity, RELATIONSHIP_TYPES, RelationshipType } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
-import { Loader2, Share2 } from 'lucide-react';
+import Popover from '../ui/Popover';
+import { Loader2, Share2, ChevronDown, Check } from 'lucide-react';
 
 interface CreateRelationshipModalProps {
   isOpen: boolean;
@@ -21,6 +23,11 @@ const CreateRelationshipModal: React.FC<CreateRelationshipModalProps> = ({ isOpe
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Popover states
+  const [isSourceEntityOpen, setIsSourceEntityOpen] = useState(false);
+  const [isTargetEntityOpen, setIsTargetEntityOpen] = useState(false);
+  const [isTypeOpen, setIsTypeOpen] = useState(false);
 
   const handleClose = () => {
     setSourceEntityId('');
@@ -57,20 +64,22 @@ const CreateRelationshipModal: React.FC<CreateRelationshipModalProps> = ({ isOpe
     }
   };
   
-  const renderSelect = (id: string, value: string, onChange: (val: string) => void, placeholder: string) => (
-     <select 
-        id={id}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        disabled={isLoading}
-        required
-        className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-    >
-        <option value="" disabled>{placeholder}</option>
-        {entities.map(entity => (
-            <option key={entity.id} value={entity.id}>{entity.name}</option>
-        ))}
-    </select>
+  const renderSelect = (id: string, value: string, onChange: (val: string) => void, placeholder: string, isOpen: boolean, onToggle: (open: boolean) => void) => (
+     <Popover isOpen={isOpen} onClose={() => onToggle(false)} trigger={
+        <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => onToggle(true)} disabled={isLoading}>
+            <span className="truncate">{entities.find(e => e.id === value)?.name || placeholder}</span>
+            <ChevronDown className="h-4 w-4 text-slate-500"/>
+        </Button>
+    }>
+        <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+            {entities.map(entity => (
+                <div key={entity.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { onChange(entity.id); onToggle(false); }}>
+                    <span>{entity.name}</span>
+                    {value === entity.id && <Check className="h-4 w-4 text-brand-500"/>}
+                </div>
+            ))}
+        </div>
+    </Popover>
   );
 
   return (
@@ -81,28 +90,34 @@ const CreateRelationshipModal: React.FC<CreateRelationshipModalProps> = ({ isOpe
                     <label htmlFor="sourceEntity" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                         Entidade de Origem
                     </label>
-                    {renderSelect('sourceEntity', sourceEntityId, setSourceEntityId, 'Selecione a origem...')}
+                    {renderSelect('sourceEntity', sourceEntityId, setSourceEntityId, 'Selecione a origem...', isSourceEntityOpen, setIsSourceEntityOpen)}
                 </div>
                 <div className="w-full">
                     <label htmlFor="targetEntity" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                         Entidade de Destino
                     </label>
-                    {renderSelect('targetEntity', targetEntityId, setTargetEntityId, 'Selecione o destino...')}
+                    {renderSelect('targetEntity', targetEntityId, setTargetEntityId, 'Selecione o destino...', isTargetEntityOpen, setIsTargetEntityOpen)}
                 </div>
             </div>
              <div>
                 <label htmlFor="relationshipType" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Tipo de Relação
                 </label>
-                 <select 
-                    id="relationshipType"
-                    value={type}
-                    onChange={e => setType(e.target.value as RelationshipType)}
-                    disabled={isLoading}
-                    className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                    {RELATIONSHIP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                 <Popover isOpen={isTypeOpen} onClose={() => setIsTypeOpen(false)} trigger={
+                     <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => setIsTypeOpen(true)} disabled={isLoading}>
+                         <span className="truncate">{type}</span>
+                         <ChevronDown className="h-4 w-4 text-slate-500"/>
+                     </Button>
+                 }>
+                    <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-1">
+                        {RELATIONSHIP_TYPES.map(t => (
+                            <div key={t} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setType(t); setIsTypeOpen(false); }}>
+                                <span>{t}</span>
+                                {type === t && <Check className="h-4 w-4 text-brand-500"/>}
+                            </div>
+                        ))}
+                    </div>
+                </Popover>
             </div>
             <div>
                 <label htmlFor="relationshipDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">

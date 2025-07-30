@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, Lock, GripVertical, Clock, Play, Pause, Link2, CheckCircle, FlaskConical, AlertTriangle } from 'lucide-react';
-import { Task, User, Module, TaskCategory } from '../../types';
+import { MessageSquare, Lock, GripVertical, Clock, Play, Pause, Link2 } from 'lucide-react';
+import { Task, User, Module } from '../../types';
 import Avatar from '../ui/Avatar';
 import Badge from '../ui/Badge';
 import { useTimeTracking, formatDuration } from '../../utils/placeholder';
 import IconRenderer from '../ui/IconRenderer';
-import { MODULE_COLOR_MAP } from '../../utils/styleUtils';
 
 
 interface TaskCardProps {
@@ -15,12 +14,11 @@ interface TaskCardProps {
   isDragging?: boolean;
   isBlocked?: boolean;
   moduleInfo?: Module;
-  categoryInfo?: TaskCategory;
   dragHandleListeners?: any;
   currentUser: User | null;
 }
 
-const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, categoryInfo, dragHandleListeners, currentUser }: TaskCardProps) => {
+const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandleListeners, currentUser }: TaskCardProps) => {
     const { handleStart, handleStop, isBusy, error: timerError } = useTimeTracking();
     const [runningTime, setRunningTime] = useState(0);
     const timerIntervalRef = useRef<number | null>(null);
@@ -31,8 +29,6 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, categoryIn
     const totalTime = useMemo(() => {
         return (task.timeLogs || []).reduce((acc, log) => acc + log.durationInSeconds, 0);
     }, [task.timeLogs]);
-    
-    const categoryColorClasses = categoryInfo?.color ? MODULE_COLOR_MAP[categoryInfo.color]?.badge : MODULE_COLOR_MAP['gray'].badge;
     
     useEffect(() => {
         if (isTimerActiveForThisTask && currentUser?.activeTimer?.startTime) {
@@ -80,12 +76,6 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, categoryIn
 
       <div className="pr-6">
         <div className="flex items-center gap-2 mb-2">
-            {categoryInfo && (
-                <Badge className={`!py-0.5 !px-2 !text-xs rounded-full ${categoryColorClasses}`}>
-                    <IconRenderer name={categoryInfo.icon} size={12} className="mr-1.5" />
-                    {categoryInfo.name}
-                </Badge>
-            )}
             {moduleInfo && (
                 <Badge className="!py-0.5 !px-2 !text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                     <IconRenderer name={moduleInfo.icon} size={12} className="mr-1.5" />
@@ -95,18 +85,6 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, categoryIn
         </div>
         <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{task.title}</p>
         <div className="flex items-center gap-1.5 flex-wrap mt-2">
-          {task.subStatus === 'testing' && (
-            <Badge className="!py-0.5 !px-2 !text-xs bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-full">
-                <FlaskConical size={12} className="mr-1" />
-                Em Teste
-            </Badge>
-          )}
-          {task.subStatus === 'approved' && (
-            <Badge className="!py-0.5 !px-2 !text-xs bg-teal-500/20 text-teal-600 dark:text-teal-400 rounded-full">
-                <CheckCircle size={12} className="mr-1" />
-                Aprovado
-            </Badge>
-          )}
           {isBlocked && (
             <Badge className="!py-0.5 !px-2 !text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full">
                 <Lock size={12} className="mr-1" />

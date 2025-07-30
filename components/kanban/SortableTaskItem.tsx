@@ -2,7 +2,7 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import TaskCard from './TaskCard';
-import { Task, User, Module, TaskCategory } from '../../types';
+import { Task, User, Module } from '../../types';
 
 interface SortableTaskItemProps {
     id: string;
@@ -10,11 +10,10 @@ interface SortableTaskItemProps {
     onTaskClick: (task: Task) => void;
     blockedStatusLookup: Record<string, boolean>;
     moduleLookup: Record<string, Module>;
-    categoryLookup: Record<string, TaskCategory>;
     currentUser: User | null;
 }
 
-const SortableTaskItem: React.FC<SortableTaskItemProps> = ({ id, task, onTaskClick, blockedStatusLookup, moduleLookup, categoryLookup, currentUser }) => {
+const SortableTaskItem: React.FC<SortableTaskItemProps> = ({ id, task, onTaskClick, blockedStatusLookup, moduleLookup, currentUser }) => {
     const {
         attributes,
         listeners,
@@ -33,7 +32,6 @@ const SortableTaskItem: React.FC<SortableTaskItemProps> = ({ id, task, onTaskCli
 
     const isBlocked = blockedStatusLookup[task.id] || false;
     const moduleInfo = task.moduleId ? moduleLookup[task.moduleId] : undefined;
-    const categoryInfo = task.categoryId ? categoryLookup[task.categoryId] : undefined;
 
     return (
         <div ref={setNodeRef} style={style} {...attributes}>
@@ -43,7 +41,6 @@ const SortableTaskItem: React.FC<SortableTaskItemProps> = ({ id, task, onTaskCli
                 isDragging={isDragging} 
                 isBlocked={isBlocked} 
                 moduleInfo={moduleInfo}
-                categoryInfo={categoryInfo}
                 dragHandleListeners={listeners}
                 currentUser={currentUser}
             />

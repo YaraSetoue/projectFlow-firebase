@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Timestamp } from '@firebase/firestore';
 import { createTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
-import { UserSummary, Module, Member, Feature, Task, TaskCategory } from '../../types';
+import { UserSummary, Module, Member, Feature, Task } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -19,40 +19,47 @@ interface CreateTaskModalProps {
   projectMembers: Member[];
   modules: Module[];
   features: Feature[];
-  categories: TaskCategory[];
 }
 
-const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, features, categories }) => {
+const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, features }) => {
   const { currentUser } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState<UserSummary | null>(null);
-  const [categoryId, setCategoryId] = useState<string>('');
   const [featureId, setFeatureId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Popover states
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
+  const [isFeaturePopoverOpen, setIsFeaturePopoverOpen] = useState(false);
   
-  const featuresByModule = useMemo(() => {
-    if (!features || !modules) return {};
-    return features.reduce((acc, feature) => {
+  const groupedFeatures = useMemo(() => {
+    if (!features || !modules) return [];
+    
+    const featuresByModule = features.reduce((acc, feature) => {
         (acc[feature.moduleId] = acc[feature.moduleId] || []).push(feature);
         return acc;
     }, {} as Record<string, Feature[]>);
+
+    return modules.map(module => ({
+        moduleName: module.name,
+        moduleId: module.id,
+        features: featuresByModule[module.id] || []
+    })).filter(group => group.features.length > 0);
   }, [features, modules]);
 
   const resetForm = () => {
       setTitle('');
       setDescription('');
       setAssignee(null);
-      setCategoryId('');
       setFeatureId('');
       setDueDate('');
       setError('');
       setIsLoading(false);
       setIsAssigneeOpen(false);
+      setIsFeaturePopoverOpen(false);
   };
   
   const handleClose = () => {
@@ -80,10 +87,6 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
         title: title,
         description: description,
       };
-      
-      if (categoryId) {
-        taskPayload.categoryId = categoryId;
-      }
   
       if (assignee) {
         taskPayload.assignee = assignee;
@@ -102,7 +105,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       await createTask(
           projectId, 
           projectName, 
-          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId' | 'categoryId'>>
+          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId'>>
       );
       
       handleClose();
@@ -114,6 +117,8 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       setIsLoading(false);
     }
   };
+
+  const selectedFeatureName = useMemo(() => features.find(f => f.id === featureId)?.name, [features, featureId]);
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Criar Nova Tarefa">
@@ -146,23 +151,6 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                 />
             </div>
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="categoryId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Categoria
-                  </label>
-                  <select
-                    id="categoryId"
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                    disabled={isLoading || !categories}
-                    className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                  >
-                    <option value="">Nenhuma Categoria</option>
-                    {categories.map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
                  <div className="relative">
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                         Atribuir a
@@ -209,34 +197,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                         </div>
                     </Popover>
                 </div>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="featureId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Funcionalidade Relacionada
-                  </label>
-                  <select
-                    id="featureId"
-                    value={featureId}
-                    onChange={(e) => setFeatureId(e.target.value)}
-                    disabled={isLoading || !features}
-                    className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                  >
-                    <option value="">Nenhuma Funcionalidade</option>
-                    {modules.map(module => (
-                      (featuresByModule[module.id] && featuresByModule[module.id].length > 0) && (
-                        <optgroup key={module.id} label={`Módulo: ${module.name}`}>
-                          {featuresByModule[module.id].map(feature => (
-                            <option key={feature.id} value={feature.id}>{feature.name}</option>
-                          ))}
-                        </optgroup>
-                      )
-                    ))}
-                  </select>
-                </div>
-
-                <div>
+                 <div>
                      <label htmlFor="dueDate" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                         Data de Entrega (Opcional)
                     </label>
@@ -249,6 +210,42 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                         className="appearance-none"
                     />
                 </div>
+            </div>
+            
+            <div className="grid grid-cols-1">
+                <div>
+                  <label htmlFor="featureId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Funcionalidade Relacionada
+                  </label>
+                   <Popover
+                    isOpen={isFeaturePopoverOpen}
+                    onClose={() => setIsFeaturePopoverOpen(false)}
+                    trigger={
+                        <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => setIsFeaturePopoverOpen(true)} disabled={isLoading || !features}>
+                             <span className="truncate">{selectedFeatureName || 'Nenhuma Funcionalidade'}</span>
+                             <ChevronDown className="h-4 w-4 text-slate-500" />
+                        </Button>
+                    }>
+                        <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            <div className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setFeatureId(''); setIsFeaturePopoverOpen(false); }}>
+                                Nenhuma Funcionalidade
+                                {!featureId && <Check className="h-4 w-4 text-brand-500"/>}
+                            </div>
+                            {groupedFeatures.map(group => (
+                                <div key={group.moduleId}>
+                                    <div className="px-2 py-1 text-xs text-slate-400 font-semibold">{group.moduleName}</div>
+                                    {group.features.map(feature => (
+                                        <div key={feature.id} className="p-2 pl-4 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setFeatureId(feature.id); setIsFeaturePopoverOpen(false); }}>
+                                            <span className="truncate">{feature.name}</span>
+                                            {featureId === feature.id && <Check className="h-4 w-4 text-brand-500"/>}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                  </Popover>
+                </div>
+
             </div>
 
             {error && <p className="text-sm text-red-500">{error}</p>}

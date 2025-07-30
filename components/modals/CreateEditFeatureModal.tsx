@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createFeature, updateFeature } from '../../services/firestoreService';
@@ -89,6 +90,7 @@ const CreateEditFeatureModal: React.FC<CreateEditFeatureModalProps> = ({ isOpen,
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState<'general' | 'flows' | 'tests'>('general');
+    const [isModulePopoverOpen, setIsModulePopoverOpen] = useState(false);
     
     const isEditing = feature !== null;
 
@@ -190,9 +192,21 @@ const CreateEditFeatureModal: React.FC<CreateEditFeatureModalProps> = ({ isOpen,
                                         </div>
                                         <div>
                                             <label htmlFor="moduleId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Módulo</label>
-                                            <select id="moduleId" value={moduleId} onChange={e => setModuleId(e.target.value)} required className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-                                                {modules.map(mod => <option key={mod.id} value={mod.id}>{mod.name}</option>)}
-                                            </select>
+                                            <Popover isOpen={isModulePopoverOpen} onClose={() => setIsModulePopoverOpen(false)} trigger={
+                                                <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => setIsModulePopoverOpen(true)}>
+                                                    <span className="truncate">{modules.find(m => m.id === moduleId)?.name || 'Selecione...'}</span>
+                                                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                                                </Button>
+                                            }>
+                                                <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                    {modules.map(mod => (
+                                                        <div key={mod.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setModuleId(mod.id); setIsModulePopoverOpen(false); }}>
+                                                            <span className="truncate">{mod.name}</span>
+                                                            {moduleId === mod.id && <Check className="h-4 w-4 text-brand-500"/>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </Popover>
                                         </div>
                                         <div>
                                             <label htmlFor="featureDesc" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Descrição</label>

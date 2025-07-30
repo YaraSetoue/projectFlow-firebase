@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { collection, query, orderBy, Timestamp, deleteField, doc, where } from '@firebase/firestore';
 import { useFirestoreQuery, useFirestoreDocument } from '../../hooks/useFirestoreQuery';
@@ -5,7 +6,7 @@ import { db } from '../../firebase/config';
 import { updateTask, addTaskComment, sendNotification, deleteTask, addLinkToTask, removeLinkFromTask, updateLinkInTask, addTaskDependency, removeTaskDependency } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
 import { useTimeTracking, formatDuration, formatTimeAgo } from '../../utils/placeholder';
-import { Task, UserSummary, Comment, Module, TimeLog, Project, Member, TaskLink, Entity, TaskStatus, Feature, SubStatus, TaskCategory, Activity } from '../../types';
+import { Task, UserSummary, Comment, Module, TimeLog, Project, Member, TaskLink, Entity, TaskStatus, Feature, Activity, TaskCategory } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -13,12 +14,9 @@ import Textarea from '../ui/Textarea';
 import Avatar from '../ui/Avatar';
 import Popover from '../ui/Popover';
 import AlertDialog from '../ui/AlertDialog';
-import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save, Shapes, Tag, Activity as ActivityIcon } from 'lucide-react';
+import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save, Shapes, Activity as ActivityIcon } from 'lucide-react';
 import Badge from '../ui/Badge';
 import ReactQuill from 'react-quill';
-import IconRenderer from '../ui/IconRenderer';
-import { MODULE_COLOR_MAP } from '../../utils/styleUtils';
-
 
 interface TaskDetailModalProps {
   isOpen: boolean;
@@ -49,19 +47,10 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
     done: 'Concluído',
 };
 
-const SUB_STATUS_LABELS: Record<SubStatus, string> = {
-    executing: 'Executando',
-    testing: 'Em Teste',
-    approved: 'Aprovado'
-};
-
-const taskStatusColors: Record<string, string> = {
+const taskStatusColors: Record<TaskStatus, string> = {
     todo: 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
     inprogress: 'bg-blue-200 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
     done: 'bg-green-200 dark:bg-green-900/40 text-green-600 dark:text-green-300',
-    executing: 'bg-blue-200 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
-    testing: 'bg-yellow-200 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-300',
-    approved: 'bg-teal-200 dark:bg-teal-900/40 text-teal-600 dark:text-teal-300',
 };
 
 type ActiveTab = 'activity' | 'dependencies' | 'links';
@@ -116,6 +105,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     // Popover states
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
+    const [isFeaturePopoverOpen, setIsFeaturePopoverOpen] = useState(false);
 
     // Link states
     const [showLinkForm, setShowLinkForm] = useState(false);
@@ -189,23 +179,24 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
         [projectId]
     );
     const { data: features } = useFirestoreQuery<Feature>(featuresQuery);
-
-    const featuresByModule = useMemo(() => {
-        if (!features || !modules) return {};
-        return features.reduce((acc, feature) => {
+    
+    const groupedFeatures = useMemo(() => {
+        if (!features || !modules) return [];
+        const featuresByModule = features.reduce((acc, feature) => {
             (acc[feature.moduleId] = acc[feature.moduleId] || []).push(feature);
             return acc;
         }, {} as Record<string, Feature[]>);
+        return modules.map(module => ({
+            moduleName: module.name,
+            moduleId: module.id,
+            features: featuresByModule[module.id] || []
+        })).filter(group => group.features.length > 0);
     }, [features, modules]);
 
     const relatedFeature = useMemo(() =>
         realTimeTask?.featureId && features ? features.find(f => f.id === realTimeTask.featureId) : null,
     [realTimeTask, features]);
 
-    const relatedCategory = useMemo(() => 
-        realTimeTask?.categoryId && categories ? categories.find(c => c.id === realTimeTask.categoryId) : null,
-    [realTimeTask, categories]);
-    
     const availableTasksForDependency = useMemo(() => {
         if (!realTimeTask) return [];
         const existingDepIds = new Set((realTimeTask.dependencies || []).map(d => d.taskId));
@@ -307,8 +298,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                 assignee: editedTask.assignee || null,
                 dueDate: editedTask.dueDate || null,
                 status: editedTask.status,
-                subStatus: editedTask.subStatus || null,
-                categoryId: editedTask.categoryId
             };
 
             if (editedTask.featureId) {
@@ -349,9 +338,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
         setIsStatusOpen(false);
         
         const updatedTask = {...editedTask, status: newStatus};
-        if (newStatus === 'inprogress' && editedTask.status !== 'inprogress') {
-            updatedTask.subStatus = 'executing';
-        }
         setEditedTask(updatedTask);
     };
 
@@ -765,8 +751,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                 </div>
                             </Popover>
                         ) : (
-                            <Badge className={`!py-1 !px-3 font-medium ${taskStatusColors[realTimeTask.subStatus || realTimeTask.status]}`}>
-                                {realTimeTask.status === 'inprogress' ? SUB_STATUS_LABELS[realTimeTask.subStatus || 'executing'] : STATUS_LABELS[realTimeTask.status]}
+                            <Badge className={`!py-1 !px-3 font-medium ${taskStatusColors[realTimeTask.status]}`}>
+                                {STATUS_LABELS[realTimeTask.status]}
                             </Badge>
                         )}
                     </PropertyBlock>
@@ -809,52 +795,32 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                         )}
                     </PropertyBlock>
                     
-                    <PropertyBlock label="Categoria">
-                         {isEditing ? (
-                            <select
-                                className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                                value={editedTask.categoryId || ''}
-                                onChange={e => setEditedTask({ ...editedTask, categoryId: e.target.value })}
-                                disabled={!isEditor || !categories}
-                                required
-                            >
-                                {categories.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
-                            </select>
-                         ) : (
-                             <div className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                                {relatedCategory ? (
-                                    <>
-                                        <IconRenderer name={relatedCategory.icon} className={MODULE_COLOR_MAP[relatedCategory.color]?.text} />
-                                        <span>{relatedCategory.name}</span>
-                                    </>
-                                ) : (
-                                    <span className="text-slate-500 dark:text-slate-400">Nenhuma</span>
-                                )}
-                            </div>
-                         )}
-                    </PropertyBlock>
-
                     <PropertyBlock label="Funcionalidade Relacionada">
                          {isEditing ? (
-                            <select
-                                className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                                value={editedTask.featureId || ''}
-                                onChange={e => setEditedTask({ ...editedTask, featureId: e.target.value })}
-                                disabled={!isEditor || !features}
-                            >
-                                <option value="">Nenhuma Funcionalidade</option>
-                                {modules.map(module => (
-                                    (featuresByModule[module.id] && featuresByModule[module.id].length > 0) && (
-                                    <optgroup key={module.id} label={`Módulo: ${module.name}`}>
-                                        {featuresByModule[module.id].map(feature => (
-                                        <option key={feature.id} value={feature.id}>{feature.name}</option>
-                                        ))}
-                                    </optgroup>
-                                    )
-                                ))}
-                            </select>
+                             <Popover isOpen={isFeaturePopoverOpen} onClose={() => setIsFeaturePopoverOpen(false)} trigger={
+                                <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => setIsFeaturePopoverOpen(true)} disabled={!isEditor || !features}>
+                                    <span className="truncate">{features?.find(f => f.id === editedTask.featureId)?.name || 'Nenhuma Funcionalidade'}</span>
+                                    <ChevronDown className="h-4 w-4 text-slate-500" />
+                                </Button>
+                            }>
+                                <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                    <div className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask({ ...editedTask, featureId: '' }); setIsFeaturePopoverOpen(false); }}>
+                                        Nenhuma Funcionalidade
+                                        {(!editedTask.featureId) && <Check className="h-4 w-4 text-brand-500" />}
+                                    </div>
+                                    {groupedFeatures.map(group => (
+                                        <div key={group.moduleId}>
+                                            <div className="px-2 py-1 text-xs text-slate-400 font-semibold">{group.moduleName}</div>
+                                            {group.features.map(feature => (
+                                                <div key={feature.id} className="p-2 pl-4 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask({ ...editedTask, featureId: feature.id }); setIsFeaturePopoverOpen(false); }}>
+                                                    <span className="truncate">{feature.name}</span>
+                                                    {editedTask.featureId === feature.id && <Check className="h-4 w-4 text-brand-500" />}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                            </Popover>
                          ) : (
                              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
                                 {relatedFeature ? (

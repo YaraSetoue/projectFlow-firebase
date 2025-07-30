@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, orderBy, getDocs, where } from '@firebase/firestore';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Entity, Relationship, Module, Task, Member, User, TaskCategory, Feature } from '../types';
+import { Entity, Relationship, Module, Task, Member, User, Feature } from '../types';
 import { PlusCircle, Loader2, Database, Share2 } from 'lucide-react';
 import { useProject } from '../contexts/ProjectContext';
 import { useAuth } from '../hooks/useAuth';
@@ -77,12 +77,6 @@ const DataModelPage = () => {
     const tasksQuery = useMemo(() => query(collection(db, 'projects', projectId, 'tasks')), [projectId]);
     const { data: tasks, loading: tasksLoading, error: tasksError } = useFirestoreQuery<Task>(tasksQuery);
     
-    const categoriesQuery = useMemo(() => 
-        query(collection(db, 'projects', projectId, 'taskCategories'), orderBy('name', 'asc')), 
-        [projectId]
-    );
-    const { data: categories, loading: categoriesLoading, error: categoriesError } = useFirestoreQuery<TaskCategory>(categoriesQuery);
-
     const featuresQuery = useMemo(() => query(collection(db, 'projects', projectId, 'features'), orderBy('name', 'asc')), [projectId]);
     const { data: features, loading: featuresLoading, error: featuresError } = useFirestoreQuery<Feature>(featuresQuery);
 
@@ -146,8 +140,8 @@ const DataModelPage = () => {
         setSearchParams({}, { replace: true });
     };
 
-    const loading = entitiesLoading || relationshipsLoading || modulesLoading || tasksLoading || categoriesLoading || featuresLoading;
-    const error = entitiesError || relationshipsError || modulesError || tasksError || categoriesError || featuresError;
+    const loading = entitiesLoading || relationshipsLoading || modulesLoading || tasksLoading || featuresLoading;
+    const error = entitiesError || relationshipsError || modulesError || tasksError || featuresError;
 
     return (
         <motion.div
@@ -255,7 +249,6 @@ const DataModelPage = () => {
                         allTasks={tasks || []}
                         modules={modules || []}
                         entities={entities || []}
-                        categories={categories || []}
                     />
                 )}
             </AnimatePresence>

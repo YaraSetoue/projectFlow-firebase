@@ -1,11 +1,13 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { createEntity, updateEntity } from '../../services/firestoreService';
 import { Entity, Attribute, DATA_TYPES, DataType, Module, Feature } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+import Popover from '../ui/Popover';
 import Textarea from '../ui/Textarea';
-import { Loader2, PlusCircle, Trash2, Boxes } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Boxes, ChevronDown, Check } from 'lucide-react';
 import Badge from '../ui/Badge';
 
 interface CreateEditEntityModalProps {
@@ -24,6 +26,7 @@ const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, o
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [openAttributeMenu, setOpenAttributeMenu] = useState<string | null>(null);
 
   const isEditing = entity !== null;
   
@@ -131,9 +134,25 @@ const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, o
                                 <Input value={attr.name} onChange={e => updateAttribute(attr.id, 'name', e.target.value)} placeholder="Nome" required disabled={isLoading} />
                             </div>
                             <div className="col-span-6 sm:col-span-3">
-                                <select value={attr.dataType} onChange={e => updateAttribute(attr.id, 'dataType', e.target.value as DataType)} disabled={isLoading} className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-                                    {DATA_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                                </select>
+                               <Popover
+                                    isOpen={openAttributeMenu === attr.id}
+                                    onClose={() => setOpenAttributeMenu(null)}
+                                    trigger={
+                                        <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => setOpenAttributeMenu(attr.id)} disabled={isLoading}>
+                                            <span className="truncate">{attr.dataType}</span>
+                                            <ChevronDown className="h-4 w-4 text-slate-500"/>
+                                        </Button>
+                                    }
+                                >
+                                    <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-1">
+                                        {DATA_TYPES.map(type => (
+                                            <div key={type} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { updateAttribute(attr.id, 'dataType', type); setOpenAttributeMenu(null); }}>
+                                                <span>{type}</span>
+                                                {attr.dataType === type && <Check className="h-4 w-4 text-brand-500" />}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Popover>
                             </div>
                             <div className="col-span-6 sm:col-span-4">
                                 <Input value={attr.description} onChange={e => updateAttribute(attr.id, 'description', e.target.value)} placeholder="Descrição" disabled={isLoading} />

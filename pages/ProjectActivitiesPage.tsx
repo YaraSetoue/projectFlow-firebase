@@ -1,10 +1,11 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 // @ts-ignore
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { collection, query, orderBy, where, getDocs } from '@firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { History, Loader2, Calendar, CheckCircle, UserCheck, Filter } from 'lucide-react';
+import { History, Loader2, Calendar, CheckCircle, UserCheck, Filter, ChevronDown, Check } from 'lucide-react';
 
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
@@ -15,6 +16,7 @@ import { useProject } from '../contexts/ProjectContext';
 import ConnectionErrorState from '../components/ui/ConnectionErrorState';
 import Avatar from '../components/ui/Avatar';
 import Button from '../components/ui/Button';
+import Popover from '../components/ui/Popover';
 
 // A new component for the highlight cards
 const StatCard = ({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode }) => (
@@ -32,27 +34,41 @@ const StatCard = ({ title, value, icon }: { title: string; value: string | numbe
 // New component for the filters
 const ActivityFilters = ({ members, onFilterChange }: { members: Member[], onFilterChange: (filters: any) => void }) => {
     const [selectedMember, setSelectedMember] = useState('all');
+    const [isMemberPopoverOpen, setIsMemberPopoverOpen] = useState(false);
 
     useEffect(() => {
         onFilterChange({ memberId: selectedMember });
     }, [selectedMember, onFilterChange]);
+
+    const selectedMemberName = useMemo(() => {
+        if (selectedMember === 'all') return 'Todos';
+        return members.find(m => m.uid === selectedMember)?.displayName || 'Todos';
+    }, [selectedMember, members]);
 
     return (
         <div className="bg-white dark:bg-slate-900 p-4 rounded-lg shadow-md mb-6 flex items-center gap-4">
             <Filter className="h-5 w-5 text-slate-500" />
             <div className="flex items-center gap-2">
                 <label htmlFor="member-filter" className="text-sm font-medium">Membro:</label>
-                <select
-                    id="member-filter"
-                    value={selectedMember}
-                    onChange={(e) => setSelectedMember(e.target.value)}
-                    className="h-9 px-3 rounded-md text-sm border border-slate-300 dark:border-slate-700 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                    <option value="all">Todos</option>
-                    {members.map(member => (
-                        <option key={member.uid} value={member.uid}>{member.displayName}</option>
-                    ))}
-                </select>
+                <Popover isOpen={isMemberPopoverOpen} onClose={() => setIsMemberPopoverOpen(false)} trigger={
+                    <Button type="button" variant="outline" className="w-48 justify-between text-left font-normal" onClick={() => setIsMemberPopoverOpen(true)}>
+                        <span className="truncate">{selectedMemberName}</span>
+                        <ChevronDown className="h-4 w-4 text-slate-500"/>
+                    </Button>
+                }>
+                    <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        <div className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setSelectedMember('all'); setIsMemberPopoverOpen(false); }}>
+                            <span>Todos</span>
+                            {selectedMember === 'all' && <Check className="h-4 w-4 text-brand-500"/>}
+                        </div>
+                        {members.map(member => (
+                            <div key={member.uid} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setSelectedMember(member.uid); setIsMemberPopoverOpen(false); }}>
+                                <span className="truncate">{member.displayName}</span>
+                                {selectedMember === member.uid && <Check className="h-4 w-4 text-brand-500"/>}
+                            </div>
+                        ))}
+                    </div>
+                </Popover>
             </div>
              {/* Placeholder for future filters */}
             <p className="text-sm text-slate-400 italic">Mais filtros em breve...</p>
