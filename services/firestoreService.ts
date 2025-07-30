@@ -550,6 +550,29 @@ export const updateFeature = async (projectId: string, featureId: string, featur
     await updateDoc(featureRef, featureData);
 };
 
+export const deleteFeature = async (projectId: string, featureId:string) => {
+    const batch = writeBatch(db);
+    
+    // 1. Find all tasks that reference this feature
+    const tasksQuery = query(
+        collection(db, 'projects', projectId, 'tasks'), 
+        where('featureId', '==', featureId)
+    );
+    const tasksSnapshot = await getDocs(tasksQuery);
+
+    // 2. For each task found, update it to remove the featureId field
+    tasksSnapshot.forEach(doc => {
+        batch.update(doc.ref, { featureId: deleteField() });
+    });
+
+    // 3. Delete the actual feature document
+    const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+    batch.delete(featureRef);
+
+    // 4. Commit all batched writes
+    await batch.commit();
+};
+
 
 // --- Entity & Relationship Functions ---
 export const createEntity = async (projectId: string, entityData: Pick<Entity, 'name' | 'description' | 'attributes' | 'relatedModuleIds' | 'relatedTaskIds'>) => {

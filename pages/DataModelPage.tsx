@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, orderBy, getDocs, where } from '@firebase/firestore';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Entity, Relationship, Module, Task, Member, User, TaskCategory } from '../types';
+import { Entity, Relationship, Module, Task, Member, User, TaskCategory, Feature } from '../types';
 import { PlusCircle, Loader2, Database, Share2 } from 'lucide-react';
 import { useProject } from '../contexts/ProjectContext';
 import { useAuth } from '../hooks/useAuth';
@@ -83,6 +83,9 @@ const DataModelPage = () => {
     );
     const { data: categories, loading: categoriesLoading, error: categoriesError } = useFirestoreQuery<TaskCategory>(categoriesQuery);
 
+    const featuresQuery = useMemo(() => query(collection(db, 'projects', projectId, 'features'), orderBy('name', 'asc')), [projectId]);
+    const { data: features, loading: featuresLoading, error: featuresError } = useFirestoreQuery<Feature>(featuresQuery);
+
 
     // Effect to open task modal from URL
     useEffect(() => {
@@ -143,8 +146,8 @@ const DataModelPage = () => {
         setSearchParams({}, { replace: true });
     };
 
-    const loading = entitiesLoading || relationshipsLoading || modulesLoading || tasksLoading || categoriesLoading;
-    const error = entitiesError || relationshipsError || modulesError || tasksError || categoriesError;
+    const loading = entitiesLoading || relationshipsLoading || modulesLoading || tasksLoading || categoriesLoading || featuresLoading;
+    const error = entitiesError || relationshipsError || modulesError || tasksError || categoriesError || featuresError;
 
     return (
         <motion.div
@@ -187,7 +190,6 @@ const DataModelPage = () => {
             ) : entities && entities.length > 0 ? (
                 <div className="space-y-12">
                     <section>
-                        <h2 className="text-2xl font-semibold mb-6 flex items-center gap-3"><Database /> Entidades</h2>
                         <motion.div 
                             {...{ variants: { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } }}, initial: "hidden", animate: "show" } as any}
                             className="grid grid-cols-1 lg:grid-cols-2 gap-6"
@@ -196,7 +198,7 @@ const DataModelPage = () => {
                                 <EntityCard 
                                     key={entity.id} 
                                     entity={entity}
-                                    allTasks={tasks || []}
+                                    allFeatures={features || []}
                                     onEdit={() => handleOpenEditEntity(entity)}
                                     isEditor={isEditor}
                                 />
@@ -206,7 +208,7 @@ const DataModelPage = () => {
                     
                     {relationships && relationships.length > 0 && (
                          <section>
-                            <h2 className="text-2xl font-semibold mb-6 flex items-center gap-3"><Share2 /> Relações</h2>
+                            <h2 className="text-2xl font-semibold mb-6 flex items-center gap-3"><Share2 /> Relações entre Entidades</h2>
                              <motion.div 
                                 {...{ variants: { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } }}, initial: "hidden", animate: "show" } as any}
                                 className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6"
@@ -230,6 +232,7 @@ const DataModelPage = () => {
                         projectId={projectId}
                         entity={editingEntity}
                         modules={modules || []}
+                        allFeatures={features || []}
                     />
                 )}
                 {isRelationshipModalOpen && (

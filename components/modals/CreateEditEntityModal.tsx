@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createEntity, updateEntity } from '../../services/firestoreService';
-import { Entity, Attribute, DATA_TYPES, DataType, Module } from '../../types';
+import { Entity, Attribute, DATA_TYPES, DataType, Module, Feature } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -14,9 +14,10 @@ interface CreateEditEntityModalProps {
   projectId: string;
   entity: Entity | null;
   modules: Module[];
+  allFeatures: Feature[];
 }
 
-const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, onClose, projectId, entity, modules }) => {
+const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, onClose, projectId, entity, modules, allFeatures }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [attributes, setAttributes] = useState<Attribute[]>([]);
@@ -26,6 +27,15 @@ const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, o
 
   const isEditing = entity !== null;
   
+  const relatedFeatures = useMemo(() => {
+    if (!entity || !entity.id || !allFeatures) return [];
+    return allFeatures.filter(feature => 
+        feature.userFlows?.some(flow => 
+            flow.relatedEntityIds?.includes(entity.id)
+        )
+    );
+  }, [allFeatures, entity]);
+
   useEffect(() => {
     if (entity) {
         setName(entity.name);
@@ -144,6 +154,19 @@ const CreateEditEntityModal: React.FC<CreateEditEntityModalProps> = ({ isOpen, o
                     <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Atributo
                 </Button>
             </div>
+
+            {isEditing && relatedFeatures.length > 0 && (
+                <div className="space-y-2">
+                    <h4 className="text-md font-medium text-slate-800 dark:text-slate-200">Utilizada em</h4>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-md max-h-28 overflow-y-auto">
+                        <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-400 space-y-1">
+                            {relatedFeatures.map(feature => (
+                                <li key={feature.id}>{feature.name}</li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+            )}
 
             {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
