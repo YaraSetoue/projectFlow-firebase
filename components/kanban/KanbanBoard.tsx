@@ -4,7 +4,7 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XCircle, AlertTriangle } from 'lucide-react';
 
-import KanbanColumn from './KanbanColumn';
+import KanbanColumn from './kanbanColumn';
 import { Task, TaskStatus, User, Module, TaskCategory } from '../../types';
 import { updateTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';

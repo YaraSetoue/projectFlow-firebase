@@ -577,7 +577,7 @@ export const startTimer = async (taskId: string, projectId: string) => {
         activeTimer: {
             projectId,
             taskId,
-            startTime: serverTimestamp(),
+            startTime: Timestamp.now(),
             userId: user.uid,
         }
     });
