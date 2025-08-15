@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 // @ts-ignore
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -26,6 +27,7 @@ import ProjectActivitiesPage from './pages/ProjectActivitiesPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import CredentialsPage from './pages/CredentialsPage';
 import TestingPage from './pages/TestingPage';
+import TaskTestPage from './pages/TaskTestPage';
 import { UIProvider, useUI } from './contexts/UIContext';
 import { SearchProvider } from './contexts/SearchContext';
 import SearchModal from './components/modals/SearchModal';
@@ -52,6 +54,7 @@ const AppRoutes = () => (
           <Route path="features" element={<FeaturesPage />} />
           <Route path="datamodel" element={<DataModelPage />} />
           <Route path="testing" element={<TestingPage />} />
+          <Route path="test/:taskId" element={<TaskTestPage />} />
           <Route path="credentials" element={<CredentialsPage />} />
           <Route path="members" element={<MembersPage />} />
           <Route path="report" element={<ProjectReportsPage />} />
@@ -95,6 +98,12 @@ const AppContent = () => {
     // Once auth is resolved, render the app's routes inside the router
     return (
       <NetworkStatusProvider>
+        <Toaster 
+            position="bottom-center"
+            toastOptions={{
+                className: 'dark:bg-slate-800 dark:text-slate-100',
+            }}
+        />
         <HashRouter>
             <GlobalShortcutHandler />
             <AppRoutes />

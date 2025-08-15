@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { collection, query, orderBy, Timestamp, deleteField, doc, where } from '@firebase/firestore';
 import { useFirestoreQuery, useFirestoreDocument } from '../../hooks/useFirestoreQuery';
@@ -14,9 +15,10 @@ import Textarea from '../ui/Textarea';
 import Avatar from '../ui/Avatar';
 import Popover from '../ui/Popover';
 import AlertDialog from '../ui/AlertDialog';
-import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save, Shapes, Activity as ActivityIcon } from 'lucide-react';
+import { Loader2, Pencil, MessageSquare, Link2, Trash2, Database, X, Boxes, Clock, Play, Pause, AlertTriangle, UserCircle, Check, ChevronDown, PlusCircle, Lock, Eye, Calendar, Save, Shapes, Activity as ActivityIcon, List } from 'lucide-react';
 import Badge from '../ui/Badge';
 import ReactQuill from 'react-quill';
+import IconRenderer from '../ui/IconRenderer';
 
 interface TaskDetailModalProps {
   isOpen: boolean;
@@ -43,13 +45,19 @@ const PropertyBlock = ({ label, children, className = '' }: { label: string, chi
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
     todo: 'A Fazer',
-    inprogress: 'Em Andamento',
+    inprogress: 'Em Progresso',
+    ready_for_qa: 'Pronto para QA',
+    in_testing: 'Em Teste',
+    approved: 'Aprovado',
     done: 'Concluído',
 };
 
 const taskStatusColors: Record<TaskStatus, string> = {
     todo: 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
     inprogress: 'bg-blue-200 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
+    ready_for_qa: 'bg-violet-200 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300',
+    in_testing: 'bg-amber-200 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300',
+    approved: 'bg-cyan-200 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-300',
     done: 'bg-green-200 dark:bg-green-900/40 text-green-600 dark:text-green-300',
 };
 
@@ -106,6 +114,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
     const [isFeaturePopoverOpen, setIsFeaturePopoverOpen] = useState(false);
+    const [isCategoryPopoverOpen, setIsCategoryPopoverOpen] = useState(false);
 
     // Link states
     const [showLinkForm, setShowLinkForm] = useState(false);
@@ -227,11 +236,16 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
 
     const userRole = useMemo(() => projectMembers.find(m => m.uid === currentUser?.uid)?.role, [projectMembers, currentUser]);
     const isEditor = userRole === 'owner' || userRole === 'editor';
+
+    const canEditTask = useMemo(() => {
+        if (!isEditor || !realTimeTask) return false;
+        return !['in_testing', 'approved', 'done'].includes(realTimeTask.status);
+    }, [isEditor, realTimeTask]);
     
     const displayError = apiError || timerError;
 
     const handleAddBlockingTask = async (targetTaskId: string) => {
-        if (!targetTaskId || !isEditor) return;
+        if (!targetTaskId || !canEditTask) return;
         setIsAddingDependency(true);
         setApiError(null);
         try {
@@ -245,7 +259,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     };
     
     const handleAddBlockedByTask = async (sourceTaskId: string) => {
-        if (!sourceTaskId || !isEditor) return;
+        if (!sourceTaskId || !canEditTask) return;
         setIsAddingDependency(true);
         setApiError(null);
         try {
@@ -259,7 +273,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     };
     
     const handleRemoveBlockingTask = async (targetTaskId: string) => {
-        if (!isEditor) return;
+        if (!canEditTask) return;
         setApiError(null);
         try {
             await removeTaskDependency(projectId, taskId, targetTaskId);
@@ -269,7 +283,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     };
     
     const handleRemoveBlockedByTask = async (sourceTaskId: string) => {
-        if (!isEditor) return;
+        if (!canEditTask) return;
         setApiError(null);
         try {
             await removeTaskDependency(projectId, sourceTaskId, taskId);
@@ -281,40 +295,47 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
 
     const handleUpdate = async () => {
         if (!currentUser || !isEditor || !editedTask || !realTimeTask) return;
+        if (!canEditTask && editedTask.status === realTimeTask.status) return; // Allow only status changes if editing is otherwise locked
+    
         setApiError(null);
         setIsUpdating(true);
         try {
             const oldAssigneeId = realTimeTask.assignee?.uid;
             const newAssigneeId = editedTask.assignee?.uid;
 
-            // Stop timer if task is marked as done
-            if (editedTask.status === 'done' && realTimeTask.status !== 'done' && currentUser?.activeTimer?.taskId === taskId) {
-                await handleStopTimer();
-            }
+            let updatePayload: any = { status: editedTask.status };
 
-            const updatePayload: any = { 
-                title: editedTask.title,
-                description: editedTask.description,
-                assignee: editedTask.assignee || null,
-                dueDate: editedTask.dueDate || null,
-                status: editedTask.status,
-            };
+            if (canEditTask) {
+                updatePayload = { 
+                    ...updatePayload,
+                    title: editedTask.title,
+                    description: editedTask.description,
+                    assignee: editedTask.assignee || null,
+                    dueDate: editedTask.dueDate || null,
+                };
 
-            if (editedTask.featureId) {
-                updatePayload.featureId = editedTask.featureId;
-                const feature = features?.find(f => f.id === editedTask.featureId);
-                if (feature) {
-                    updatePayload.moduleId = feature.moduleId;
+                 if (editedTask.featureId) {
+                    updatePayload.featureId = editedTask.featureId;
+                    const feature = features?.find(f => f.id === editedTask.featureId);
+                    if (feature) {
+                        updatePayload.moduleId = feature.moduleId;
+                    }
+                } else {
+                    updatePayload.featureId = deleteField();
+                    updatePayload.moduleId = deleteField();
                 }
-            } else {
-                updatePayload.featureId = deleteField();
-                updatePayload.moduleId = deleteField();
+
+                if (editedTask.categoryId) {
+                    updatePayload.categoryId = editedTask.categoryId;
+                } else {
+                    updatePayload.categoryId = deleteField();
+                }
             }
             
             await updateTask(projectId, taskId, updatePayload);
             setIsEditing(false);
 
-            if (newAssigneeId && newAssigneeId !== oldAssigneeId && newAssigneeId !== currentUser.uid) {
+            if (canEditTask && newAssigneeId && newAssigneeId !== oldAssigneeId && newAssigneeId !== currentUser.uid) {
                 await sendNotification(newAssigneeId, {
                     type: 'task_assigned',
                     message: `${currentUser.displayName} te atribuiu à tarefa "${editedTask.title}".`,
@@ -342,7 +363,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     };
 
     const handleConfirmDelete = async () => {
-        if (!isEditor) return;
+        if (!canEditTask) return;
         setIsDeleting(true);
         setApiError(null);
         try {
@@ -405,7 +426,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     
     const handleAddLink = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newLinkUrl.trim() || !newLinkTitle.trim() || !isEditor) return;
+        if (!newLinkUrl.trim() || !newLinkTitle.trim() || !canEditTask) return;
         try { new URL(newLinkUrl); } catch (_) { setApiError("Por favor, insira uma URL válida."); return; }
         setApiError(null);
         setIsAddingLink(true);
@@ -423,7 +444,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     };
     
     const handleRemoveLink = async (linkToRemove: TaskLink) => {
-        if (!isEditor) return;
+        if (!canEditTask) return;
         setApiError(null);
         try {
             await removeLinkFromTask(projectId, taskId, linkToRemove);
@@ -487,6 +508,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
     const linksCount = realTimeTask?.links?.length ?? 0;
     const activityCount = commentsCount + (activities?.length || 0);
 
+    const taskCategory = useMemo(() => {
+        if (!editedTask?.categoryId || !categories) return null;
+        return categories.find(c => c.id === editedTask.categoryId);
+    }, [editedTask, categories]);
+
+
     const renderContent = () => {
         if (taskLoading) {
             return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-brand-500" /></div>;
@@ -494,6 +521,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
         if (taskFetchError || !realTimeTask || !editedTask) {
             return <div className="text-center py-10 text-red-500">Falha ao carregar a tarefa ou tarefa não encontrada.</div>;
         }
+        
+        const canEditAnything = isEditor && !['in_testing', 'approved', 'done'].includes(realTimeTask.status);
 
         return (
             <div className="grid grid-cols-1 md:grid-cols-3 md:gap-x-8 gap-y-6">
@@ -503,18 +532,26 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                     
                     <section>
                         <div className="flex justify-between items-start gap-4">
-                             {isEditing ? (
-                                <Input 
-                                    value={editedTask.title} 
-                                    onChange={e => setEditedTask({...editedTask, title: e.target.value})} 
-                                    placeholder="Título da Tarefa"
-                                    className="text-2xl font-bold border-transparent focus:border-slate-300 -ml-3"
-                                />
-                            ) : (
-                                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{realTimeTask.title}</h2>
-                            )}
+                            <div className="flex items-center gap-3 min-w-0">
+                                {isEditing ? (
+                                    <Input 
+                                        value={editedTask.title} 
+                                        onChange={e => setEditedTask({...editedTask, title: e.target.value})} 
+                                        placeholder="Título da Tarefa"
+                                        className="text-2xl font-bold border-transparent focus:border-slate-300 -ml-3"
+                                        disabled={isUpdating || !canEditTask}
+                                    />
+                                ) : (
+                                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 truncate">{realTimeTask.title}</h2>
+                                )}
+                                {!isEditing && realTimeTask.hasBeenReproved && (
+                                    <div className="flex-shrink-0 text-orange-500" title="Esta tarefa foi reprovada no teste e requer correção.">
+                                        <AlertTriangle size={20} />
+                                    </div>
+                                )}
+                             </div>
 
-                             {isEditor && (
+                             
                                 <div className="flex-shrink-0">
                                 {isEditing ? (
                                     <div className="flex gap-2">
@@ -524,12 +561,20 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                         </Button>
                                     </div>
                                 ) : (
-                                    <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-                                        <Pencil className="mr-2 h-4 w-4"/> Editar Tarefa
-                                    </Button>
+                                    isEditor && (
+                                        <Button 
+                                            onClick={() => setIsEditing(true)} 
+                                            variant="outline" 
+                                            size="sm" 
+                                            disabled={!canEditAnything} 
+                                            title={!canEditAnything ? "Tarefas em estados finais não podem ser editadas." : ""}
+                                        >
+                                            <Pencil className="mr-2 h-4 w-4"/> Editar Tarefa
+                                        </Button>
+                                    )
                                 )}
                                 </div>
-                             )}
+                             
                         </div>
                     </section>
                     
@@ -541,7 +586,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                 value={editedTask.description}
                                 onChange={(content) => setEditedTask({...editedTask, description: content})}
                                 modules={quillModules}
-                                readOnly={isUpdating}
+                                readOnly={isUpdating || !canEditTask}
                                 placeholder="Adicione uma descrição mais detalhada..."
                             />
                         ) : (
@@ -629,12 +674,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                                     <span className="truncate" title={dep.title}>{dep.title}</span>
                                                     <div className="flex items-center">
                                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onNavigateToTask(dep)} title="Ver tarefa"><Eye size={14}/></Button>
-                                                        {isEditor && <button type="button" onClick={() => handleRemoveBlockedByTask(dep.id)} className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"><X size={16} /></button>}
+                                                        {canEditTask && <button type="button" onClick={() => handleRemoveBlockedByTask(dep.id)} className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"><X size={16} /></button>}
                                                     </div>
                                                 </div>
                                             ))}
                                             {blockedBy.length === 0 && !showAddBlockedByForm && <p className="text-xs text-slate-500">Nenhuma tarefa bloqueadora.</p>}
-                                            {isEditor && !showAddBlockedByForm && <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowAddBlockedByForm(true)}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Tarefa Bloqueadora</Button>}
+                                            {isEditor && !showAddBlockedByForm && <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowAddBlockedByForm(true)} disabled={!canEditTask}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Tarefa Bloqueadora</Button>}
                                             {isEditor && showAddBlockedByForm && (
                                                 <div className="flex items-center gap-2 mt-2">
                                                     <select className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm" value="" onChange={e => handleAddBlockedByTask(e.target.value)} disabled={isAddingDependency}>
@@ -657,12 +702,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                                     <span className="truncate" title={dep.title}>{dep.title}</span>
                                                     <div className="flex items-center">
                                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onNavigateToTask(dep)} title="Ver tarefa"><Eye size={14}/></Button>
-                                                        {isEditor && <button type="button" onClick={() => handleRemoveBlockingTask(dep.id)} className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"><X size={16} /></button>}
+                                                        {canEditTask && <button type="button" onClick={() => handleRemoveBlockingTask(dep.id)} className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"><X size={16} /></button>}
                                                     </div>
                                                 </div>
                                             ))}
                                             {blocking.length === 0 && !showAddBlockingForm && <p className="text-xs text-slate-500">Não está bloqueando nenhuma tarefa.</p>}
-                                            {isEditor && !showAddBlockingForm && <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowAddBlockingForm(true)}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Tarefa para Bloquear</Button>}
+                                            {isEditor && !showAddBlockingForm && <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowAddBlockingForm(true)} disabled={!canEditTask}><PlusCircle className="mr-2 h-4 w-4" /> Adicionar Tarefa para Bloquear</Button>}
                                             {isEditor && showAddBlockingForm && (
                                                 <div className="flex items-center gap-2 mt-2">
                                                     <select className="flex h-10 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-2 text-sm" value="" onChange={e => handleAddBlockingTask(e.target.value)} disabled={isAddingDependency}>
@@ -696,7 +741,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                                     <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-brand-600 dark:text-brand-400 hover:underline truncate">
                                                         <Link2 size={14} /><span className="truncate" title={link.title}>{link.title}</span>
                                                     </a>
-                                                    {isEditor && (
+                                                    {canEditTask && (
                                                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleStartEditLink(link)}><Pencil size={14}/></Button>
                                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-100/50" onClick={() => handleRemoveLink(link)}><Trash2 size={14}/></Button>
@@ -709,7 +754,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                     {linksCount === 0 && !showLinkForm && <p className="text-xs text-slate-500">Nenhum link anexado.</p>}
                                     {isEditor && (
                                         !showLinkForm ? (
-                                            <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowLinkForm(true)}>
+                                            <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => setShowLinkForm(true)} disabled={!canEditTask}>
                                                 <PlusCircle className="mr-2 h-4 w-4" /> Adicionar Link
                                             </Button>
                                         ) : (
@@ -736,18 +781,42 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                     <PropertyBlock label="Status">
                         {isEditing ? (
                             <Popover isOpen={isStatusOpen} onClose={() => setIsStatusOpen(false)} trigger={
-                                <Button type="button" variant="outline" className="w-full justify-between" onClick={() => setIsStatusOpen(true)} disabled={!isEditor || isUpdating}>
+                                <Button type="button" variant="outline" className="w-full justify-between" onClick={() => setIsStatusOpen(true)} disabled={isUpdating}>
                                     {STATUS_LABELS[editedTask.status]}
                                     <ChevronDown className="h-4 w-4 text-slate-500"/>
                                 </Button>
                             }>
                                  <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-1">
-                                    {Object.keys(STATUS_LABELS).map((statusKey) => (
-                                        <button key={statusKey} onClick={() => handleStatusChange(statusKey as TaskStatus)} className="w-full text-left flex items-center justify-between p-2 text-sm rounded-md hover:bg-slate-100 dark:hover:bg-slate-700">
-                                            <span>{STATUS_LABELS[statusKey as TaskStatus]}</span>
-                                            {editedTask.status === statusKey && <Check className="h-4 w-4 text-brand-500"/>}
-                                        </button>
-                                    ))}
+                                    {Object.keys(STATUS_LABELS).map((statusKey) => {
+                                        const status = statusKey as TaskStatus;
+                                        
+                                        let isDisabled = false;
+                                        let disabledTitle = '';
+                                
+                                        const isQaStatus = ['ready_for_qa', 'in_testing', 'approved'].includes(status);
+                                        if (isQaStatus) {
+                                            if (!editedTask.featureId) {
+                                                isDisabled = true;
+                                                disabledTitle = 'A tarefa deve estar associada a uma funcionalidade para ir para esta etapa.';
+                                            } else if (status === 'ready_for_qa' && !taskCategory?.requiresTesting) {
+                                                isDisabled = true;
+                                                disabledTitle = `A categoria "${taskCategory?.name || 'padrão'}" não requer testes.`;
+                                            }
+                                        }
+
+                                        return (
+                                            <button 
+                                                key={statusKey} 
+                                                onClick={() => handleStatusChange(status)} 
+                                                className="w-full text-left flex items-center justify-between p-2 text-sm rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                disabled={isDisabled}
+                                                title={disabledTitle}
+                                            >
+                                                <span>{STATUS_LABELS[status]}</span>
+                                                {editedTask.status === statusKey && <Check className="h-4 w-4 text-brand-500"/>}
+                                            </button>
+                                        )
+                                    })}
                                 </div>
                             </Popover>
                         ) : (
@@ -760,7 +829,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                     <PropertyBlock label="Responsável">
                         {isEditing ? (
                             <Popover isOpen={isAssigneeOpen} onClose={() => setIsAssigneeOpen(false)} trigger={
-                                <Button type="button" variant="outline" className="w-full justify-between text-left h-auto py-2" onClick={() => setIsAssigneeOpen(!isAssigneeOpen)} disabled={!isEditor}>
+                                <Button type="button" variant="outline" className="w-full justify-between text-left h-auto py-2" onClick={() => setIsAssigneeOpen(!isAssigneeOpen)} disabled={!canEditTask}>
                                     <span className="flex items-center gap-2">
                                         {editedTask.assignee ? <Avatar user={editedTask.assignee} size="sm" /> : <UserCircle className="h-6 w-6 text-slate-400" />}
                                         <span className="truncate">{editedTask.assignee?.displayName || 'Não atribuído'}</span>
@@ -774,7 +843,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                         {!editedTask.assignee && <Check className="h-4 w-4 text-brand-500" />}
                                     </div>
                                     {projectMembers.map(member => (
-                                        <div key={member.uid} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask({ ...editedTask, assignee: { uid: member.uid, displayName: member.displayName, photoURL: member.photoURL } }); setIsAssigneeOpen(false); }}>
+                                        <div key={member.uid} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask({ ...editedTask, assignee: { uid: member.uid, displayName: member.displayName, photoURL: member.photoURL, email: member.email } }); setIsAssigneeOpen(false); }}>
                                             <span className="flex items-center gap-2"><Avatar user={member} size="sm" /><span className="truncate">{member.displayName}</span></span>
                                             {editedTask.assignee?.uid === member.uid && <Check className="h-4 w-4 text-brand-500" />}
                                         </div>
@@ -795,10 +864,48 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                         )}
                     </PropertyBlock>
                     
+                    <PropertyBlock label="Categoria">
+                         {isEditing ? (
+                             <Popover isOpen={isCategoryPopoverOpen} onClose={() => setIsCategoryPopoverOpen(false)} trigger={
+                                <Button type="button" variant="outline" className="w-full justify-between text-left h-auto py-2" onClick={() => setIsCategoryPopoverOpen(true)} disabled={!canEditTask}>
+                                     <span className="flex items-center gap-2">
+                                        {taskCategory ? <IconRenderer name={taskCategory.icon} className="h-4 w-4" /> : <List className="h-4 w-4 text-slate-400"/>}
+                                        <span className="truncate">{taskCategory ? taskCategory.name : 'Nenhuma'}</span>
+                                    </span>
+                                    <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0" />
+                                </Button>
+                            }>
+                                 <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                    <div className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask(t => ({...t!, categoryId: undefined})); setIsCategoryPopoverOpen(false); }}>
+                                        <span className="flex items-center gap-2"><List className="h-4 w-4 text-slate-400"/> Nenhuma Categoria</span>
+                                        {!editedTask.categoryId && <Check className="h-4 w-4 text-brand-500"/>}
+                                    </div>
+                                    {categories.map(cat => (
+                                        <div key={cat.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setEditedTask(t => ({...t!, categoryId: cat.id})); setIsCategoryPopoverOpen(false); }}>
+                                            <span className="flex items-center gap-2"><IconRenderer name={cat.icon} className="h-4 w-4"/> {cat.name}</span>
+                                            {editedTask.categoryId === cat.id && <Check className="h-4 w-4 text-brand-500"/>}
+                                        </div>
+                                    ))}
+                                </div>
+                             </Popover>
+                         ) : (
+                              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                                {taskCategory ? (
+                                <>
+                                    <IconRenderer name={taskCategory.icon} size={16}/>
+                                    <span>{taskCategory.name}</span>
+                                </>
+                                ) : (
+                                    <span className="text-slate-500 dark:text-slate-400">Nenhuma</span>
+                                )}
+                            </div>
+                         )}
+                    </PropertyBlock>
+
                     <PropertyBlock label="Funcionalidade Relacionada">
                          {isEditing ? (
                              <Popover isOpen={isFeaturePopoverOpen} onClose={() => setIsFeaturePopoverOpen(false)} trigger={
-                                <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => setIsFeaturePopoverOpen(true)} disabled={!isEditor || !features}>
+                                <Button type="button" variant="outline" className="w-full justify-between text-left font-normal" onClick={() => setIsFeaturePopoverOpen(true)} disabled={!features || !canEditTask}>
                                     <span className="truncate">{features?.find(f => f.id === editedTask.featureId)?.name || 'Nenhuma Funcionalidade'}</span>
                                     <ChevronDown className="h-4 w-4 text-slate-500" />
                                 </Button>
@@ -841,7 +948,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                                 type="date"
                                 value={dueDateAsInputString(editedTask.dueDate)}
                                 onChange={e => setEditedTask({...editedTask, dueDate: e.target.value ? Timestamp.fromDate(new Date(`${e.target.value}T00:00:00`)) : null})}
-                                disabled={!isEditor}
+                                disabled={!canEditTask}
                             />
                         ) : (
                              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
@@ -883,7 +990,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ isOpen, onClose, onNa
                         <div className="mt-6 pt-6 border-t border-red-500/20">
                             <Button
                                 variant="outline" className="w-full justify-center text-red-600 dark:text-red-400 border-red-500/50 hover:bg-red-100 dark:hover:bg-red-500/10 hover:text-red-700"
-                                onClick={() => setDeleteAlertOpen(true)} disabled={isDeleting}
+                                onClick={() => setDeleteAlertOpen(true)} 
+                                disabled={isDeleting || !canEditTask}
+                                title={!canEditTask ? "Tarefas em estados finais não podem ser excluídas." : ""}
                             >
                                 {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                                 Excluir Tarefa

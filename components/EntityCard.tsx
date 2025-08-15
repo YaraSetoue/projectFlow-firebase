@@ -51,7 +51,7 @@ const EntityCard = ({ entity, allFeatures, onEdit, isEditor }: EntityCardProps) 
     return (
         <>
         <motion.div 
-            variants={cardVariants}
+            {...{variants: cardVariants} as any}
             className="bg-white dark:bg-slate-900 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 flex flex-col h-full"
         >
             <button 

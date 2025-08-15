@@ -49,7 +49,7 @@ const ModulesPage = () => {
     const [editingModule, setEditingModule] = useState<Module | null>(null);
 
     const userRole = project && currentUser ? project.members[currentUser.uid] : undefined;
-    const isEditor = userRole === 'editor' || userRole === 'owner';
+    const isEditor = userRole?.role === 'editor' || userRole?.role === 'owner';
 
     const modulesQuery = useMemo(() => 
         query(collection(db, 'projects', projectId, 'modules'), orderBy('createdAt', 'desc')), 

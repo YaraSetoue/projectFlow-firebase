@@ -6,16 +6,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, orderBy } from '@firebase/firestore';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Module, Feature, Entity } from '../types';
-import { PlusCircle, Loader2, Shapes, ChevronDown, Trash2 } from 'lucide-react';
+import { Module, Feature, Entity, Task } from '../types';
+import { PlusCircle, Loader2, Shapes, ChevronDown } from 'lucide-react';
 
 import Button from '../components/ui/Button';
 import CreateEditFeatureModal from '../components/modals/CreateEditFeatureModal';
 import ConnectionErrorState from '../components/ui/ConnectionErrorState';
 import { useProject } from '../contexts/ProjectContext';
 import { useAuth } from '../hooks/useAuth';
-import AlertDialog from '../components/ui/AlertDialog';
-import { deleteFeature } from '../services/firestoreService';
+import FeatureCard from '../components/FeatureCard';
 
 const EmptyState = ({ onOpenModal }: { onOpenModal: () => void }) => {
     return (
@@ -40,58 +39,7 @@ const EmptyState = ({ onOpenModal }: { onOpenModal: () => void }) => {
     );
 };
 
-const FeatureCard = ({ feature, onEdit, isEditor, projectId }: { feature: Feature, onEdit: (feature: Feature) => void, isEditor: boolean, projectId: string }) => {
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [error, setError] = useState('');
-    const [isAlertOpen, setAlertOpen] = useState(false);
-
-    const handleConfirmDelete = async () => {
-        if (!isEditor) return;
-        setIsDeleting(true);
-        setError('');
-        try {
-            await deleteFeature(projectId, feature.id);
-            setAlertOpen(false); // Close alert on success
-        } catch (err: any) {
-            setError(err.message || 'Falha ao excluir a funcionalidade.');
-            // Don't close alert on error, so user can see the message.
-            setIsDeleting(false);
-        }
-    };
-
-    return (
-        <>
-            <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-lg">
-                <div className="flex justify-between items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={feature.name}>{feature.name}</h4>
-                        <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-2">{feature.description}</p>
-                    </div>
-                     {isEditor && (
-                        <div className="flex-shrink-0 flex items-center">
-                            <Button variant="ghost" size="sm" onClick={() => onEdit(feature)}>Editar</Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40" onClick={() => setAlertOpen(true)} disabled={isDeleting}>
-                                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                            </Button>
-                        </div>
-                    )}
-                </div>
-                 {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
-            </div>
-            <AlertDialog
-                isOpen={isAlertOpen}
-                onClose={() => setAlertOpen(false)}
-                onConfirm={handleConfirmDelete}
-                title={`Excluir Funcionalidade "${feature.name}"`}
-                description="Você tem certeza? Esta ação não pode ser desfeita e removerá a associação desta funcionalidade de todas as tarefas."
-                isConfirming={isDeleting}
-            />
-        </>
-    );
-};
-
-
-const ModuleAccordion = ({ module, features, onEditFeature, isEditor, projectId }: { module: Module, features: Feature[], onEditFeature: (feature: Feature) => void, isEditor: boolean, projectId: string }) => {
+const ModuleAccordion = ({ module, features, tasks, onEditFeature, isEditor, projectId }: { module: Module, features: Feature[], tasks: Task[], onEditFeature: (feature: Feature) => void, isEditor: boolean, projectId: string }) => {
     const [isOpen, setIsOpen] = useState(true);
 
     return (
@@ -106,19 +54,31 @@ const ModuleAccordion = ({ module, features, onEditFeature, isEditor, projectId 
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
-                        initial="collapsed"
-                        animate="open"
-                        exit="collapsed"
-                        variants={{
-                            open: { opacity: 1, height: 'auto' },
-                            collapsed: { opacity: 0, height: 0 }
-                        }}
-                        transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        {...{
+                            initial:"collapsed",
+                            animate:"open",
+                            exit:"collapsed",
+                            variants:{
+                                open: { opacity: 1, height: 'auto' },
+                                collapsed: { opacity: 0, height: 0 }
+                            },
+                            transition:{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] },
+                        } as any}
                     >
                         <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                            {features.map(feature => (
-                                <FeatureCard key={feature.id} feature={feature} onEdit={onEditFeature} isEditor={isEditor} projectId={projectId} />
-                            ))}
+                            {features.map(feature => {
+                                const featureTasks = tasks.filter(t => t.featureId === feature.id);
+                                return (
+                                    <FeatureCard 
+                                        key={feature.id} 
+                                        feature={feature} 
+                                        tasks={featureTasks}
+                                        onEdit={() => onEditFeature(feature)} 
+                                        isEditor={isEditor} 
+                                        projectId={projectId} 
+                                    />
+                                );
+                            })}
                         </div>
                     </motion.div>
                 )}
@@ -137,7 +97,7 @@ const FeaturesPage = () => {
     const [editingFeature, setEditingFeature] = useState<Feature | null>(null);
 
     const userRole = project && currentUser ? project.members[currentUser.uid] : undefined;
-    const isEditor = userRole === 'editor' || userRole === 'owner';
+    const isEditor = userRole?.role === 'editor' || userRole?.role === 'owner';
 
     const modulesQuery = useMemo(() => 
         query(collection(db, 'projects', projectId, 'modules'), orderBy('name', 'asc')), 
@@ -150,6 +110,12 @@ const FeaturesPage = () => {
         [projectId]
     );
     const { data: features, loading: featuresLoading, error: featuresError } = useFirestoreQuery<Feature>(featuresQuery);
+    
+    const tasksQuery = useMemo(() => 
+        query(collection(db, 'projects', projectId, 'tasks')),
+        [projectId]
+    );
+    const { data: tasks, loading: tasksLoading, error: tasksError } = useFirestoreQuery<Task>(tasksQuery);
 
     const entitiesQuery = useMemo(() =>
         query(collection(db, 'projects', projectId, 'entities'), orderBy('name', 'asc')),
@@ -180,8 +146,8 @@ const FeaturesPage = () => {
         setEditingFeature(null);
     };
 
-    const loading = modulesLoading || featuresLoading || entitiesLoading;
-    const error = modulesError || featuresError || entitiesError;
+    const loading = modulesLoading || featuresLoading || entitiesLoading || tasksLoading;
+    const error = modulesError || featuresError || entitiesError || tasksError;
 
     return (
         <motion.div
@@ -218,6 +184,7 @@ const FeaturesPage = () => {
                             key={module.id}
                             module={module}
                             features={featuresByModule[module.id]}
+                            tasks={tasks || []}
                             onEditFeature={handleOpenEditModal}
                             isEditor={isEditor}
                             projectId={projectId}

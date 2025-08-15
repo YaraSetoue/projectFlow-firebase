@@ -1,6 +1,8 @@
+
+
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { collection, query, orderBy, where, getDocs } from '@firebase/firestore';
 import { FlaskConical, Loader2, ListChecks } from 'lucide-react';
@@ -17,8 +19,10 @@ import TaskDetailModal from '../components/modals/TaskDetailModal';
 
 const EmptyState = () => (
     <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
+        {...{
+            initial: { opacity: 0, scale: 0.95 },
+            animate: { opacity: 1, scale: 1 },
+        } as any}
         className="text-center flex flex-col items-center justify-center p-10 bg-white dark:bg-slate-800/50 rounded-lg shadow-sm"
     >
         <ListChecks className="h-16 w-16 text-slate-400 dark:text-slate-500 mb-4" />
@@ -37,7 +41,7 @@ const TestingPage = () => {
     const { currentUser } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const userRole = project && currentUser ? project.members[currentUser.uid] : undefined;
-    const isEditor = userRole === 'editor' || userRole === 'owner';
+    const isEditor = userRole?.role === 'editor' || userRole?.role === 'owner';
 
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
@@ -95,9 +99,9 @@ const TestingPage = () => {
             }
             const detailedMembers = usersData.map(user => ({
                 ...user,
-                role: project.members[user.uid] as MemberRole,
+                role: project.members[user.uid].role,
             })).filter(m => m.role);
-            setProjectMembers(detailedMembers);
+            setProjectMembers(detailedMembers as Member[]);
         };
         fetchMembers();
     }, [selectedTask, project]);
@@ -113,8 +117,10 @@ const TestingPage = () => {
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            {...{
+                initial: { opacity: 0, y: 20 },
+                animate: { opacity: 1, y: 0 },
+            } as any}
             className="p-4 sm:p-6 lg:p-8"
         >
             <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-3 mb-8">
@@ -131,7 +137,6 @@ const TestingPage = () => {
                             module={feature.moduleId ? modulesMap.get(feature.moduleId) : undefined}
                             isEditor={isEditor}
                             projectId={projectId}
-                            onTaskClick={setSelectedTask}
                         />
                     ))
                 ) : (

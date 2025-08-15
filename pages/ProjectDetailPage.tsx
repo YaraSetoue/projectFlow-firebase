@@ -2,13 +2,13 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { collection, query, orderBy, where, getDocs } from '@firebase/firestore';
-import { PlusCircle, Settings, Loader2, LayoutGrid, List, ChevronDown, Check } from 'lucide-react';
+import { collection, query, orderBy, where } from '@firebase/firestore';
+import { PlusCircle, Settings, Loader2, LayoutGrid, List, ChevronDown, Check, FlaskConical } from 'lucide-react';
 import { db } from '../firebase/config';
 import { useFirestoreQuery } from '../hooks/useFirestoreQuery';
-import { Task, Member, Module, User, Entity, TaskStatus, Feature, TaskCategory } from '../types';
+import { Task, Member, Module, Entity, TaskStatus, Feature, TaskCategory } from '../types';
 import KanbanBoard from '../components/kanban/KanbanBoard';
 import TaskListView from '../components/views/TaskListView';
 import Button from '../components/ui/Button';
@@ -110,10 +110,8 @@ const ProjectDetailPage = () => {
     const [isCreateTaskModalOpen, setCreateTaskModalOpen] = useState(false);
     const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-    const [projectMembers, setProjectMembers] = useState<Member[]>([]);
-    const [membersLoading, setMembersLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
-    const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
+    const [statusFilter, setStatusFilter] = useState<string>('all');
     
     // Popover states
     const [isModuleFilterOpen, setIsModuleFilterOpen] = useState(false);
@@ -123,7 +121,7 @@ const ProjectDetailPage = () => {
     const selectedModuleId = searchParams.get('module') || 'all';
     const taskIdFromUrl = searchParams.get('task');
 
-    const userRole = project && currentUser ? project.members[currentUser.uid] : undefined;
+    const userRole = project && currentUser ? project.members[currentUser.uid]?.role : undefined;
     const isEditor = userRole === 'editor' || userRole === 'owner';
     
     // This query fetches all tasks for the project and is used for dependency lookups
@@ -171,42 +169,9 @@ const ProjectDetailPage = () => {
     );
     const { data: categories, loading: categoriesLoading } = useFirestoreQuery<TaskCategory>(categoriesQuery);
 
-    useEffect(() => {
-        if (!project?.memberUids || project.memberUids.length === 0) {
-            setProjectMembers([]);
-            setMembersLoading(false);
-            return;
-        }
-
-        const fetchMembers = async () => {
-            setMembersLoading(true);
-            try {
-                const uids = project.memberUids;
-                const usersRef = collection(db, 'users');
-                const usersData: User[] = [];
-
-                // Firestore 'in' query has a limit of 30 items. We need to chunk it.
-                for (let i = 0; i < uids.length; i += 30) {
-                    const chunk = uids.slice(i, i + 30);
-                    const q = query(usersRef, where('uid', 'in', chunk));
-                    const querySnapshot = await getDocs(q);
-                    querySnapshot.forEach(doc => usersData.push(doc.data() as User));
-                }
-
-                const combined = usersData.map(user => ({
-                    ...user,
-                    role: project.members[user.uid]
-                })).filter(member => member.role); // Ensure only valid members are included
-                
-                setProjectMembers(combined as Member[]);
-            } catch (e) {
-                console.error("Failed to fetch member details", e);
-            } finally {
-                setMembersLoading(false);
-            }
-        };
-
-        fetchMembers();
+    const projectMembers = useMemo(() => {
+        if (!project?.members) return [];
+        return Object.values(project.members);
     }, [project]);
 
     // Effect to open task modal from URL
@@ -274,7 +239,10 @@ const ProjectDetailPage = () => {
     const statusFilterOptions = [
         { id: 'all', name: 'Todos os Status' },
         { id: 'todo', name: 'A Fazer' },
-        { id: 'inprogress', name: 'Em Andamento' },
+        { id: 'inprogress', name: 'Em Progresso' },
+        { id: 'ready_for_qa', name: 'Pronto para QA' },
+        { id: 'in_testing', name: 'Em Teste' },
+        { id: 'approved', name: 'Aprovado' },
         { id: 'done', name: 'Concluído' },
     ];
     
@@ -289,7 +257,13 @@ const ProjectDetailPage = () => {
     // State and logic for TaskListView
     const { sortedTasks, requestSort, sortConfig } = useTaskSorter(filteredTasks, projectMembers);
     
-    const loading = tasksLoading || membersLoading || modulesLoading || entitiesLoading || featuresLoading || categoriesLoading;
+    const loading = tasksLoading || modulesLoading || entitiesLoading || featuresLoading || categoriesLoading;
+
+    // Check for tasks in 'in_testing' state to show the link
+    const tasksInTestingCount = useMemo(() => {
+        if (!tasks) return 0;
+        return tasks.filter(task => task.status === 'in_testing').length;
+    }, [tasks]);
 
     return (
         <motion.div
@@ -305,6 +279,12 @@ const ProjectDetailPage = () => {
                         Tarefas
                     </h1>
                      <ViewSwitcher viewMode={viewMode} setViewMode={setViewMode} />
+                     {tasksInTestingCount > 0 && (
+                         <Link to={`/project/${projectId}/testing`} className="flex items-center gap-2 text-sm font-semibold text-amber-600 dark:text-amber-400 hover:underline">
+                            <FlaskConical size={16} />
+                            {tasksInTestingCount} tarefa{tasksInTestingCount > 1 ? 's' : ''} em teste
+                         </Link>
+                     )}
                 </div>
                 <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <div className="flex flex-col sm:flex-row items-stretch gap-2">
@@ -370,7 +350,7 @@ const ProjectDetailPage = () => {
                 </div>
             </header>
             
-            <main className="flex-grow overflow-y-auto">
+            <main className="flex-grow">
                  {loading ? (
                     <div className="flex justify-center items-center py-10 px-4 sm:px-6 lg:px-8"><Loader2 className="h-8 w-8 animate-spin text-brand-500" /></div>
                  ) : tasksError ? (
@@ -379,7 +359,7 @@ const ProjectDetailPage = () => {
                      <div className="px-4 sm:px-6 lg:px-8 py-6 h-full"><KanbanBoard tasks={filteredTasks} projectId={projectId} onTaskClick={setSelectedTask} moduleLookup={moduleLookup} taskCategories={categories || []} /></div>
                 ) : (
                     sortedTasks.length > 0 ? (
-                        <div className="pt-6 px-4 sm:px-6 lg:px-8 pb-8">
+                        <div className="pt-6 px-4 sm:px-6 lg:p-8 pb-8">
                             <TaskListView 
                                 tasks={sortedTasks}
                                 onTaskClick={setSelectedTask} 
@@ -407,6 +387,7 @@ const ProjectDetailPage = () => {
                     projectMembers={projectMembers}
                     modules={modules || []}
                     features={features || []}
+                    categories={categories || []}
                 />
             )}
             

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Menu, Search } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
@@ -31,9 +30,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
             >
               <Search size={18} />
               <span className="hidden md:inline">Buscar...</span>
-              <kbd className="hidden md:inline pointer-events-none select-none items-center gap-1 rounded border bg-slate-100 dark:bg-slate-800 px-1.5 font-mono text-[10px] font-medium text-slate-600 dark:text-slate-300 opacity-100">
-                <span className="text-sm">⌘</span>K
-              </kbd>
             </Button>
             <ThemeToggle />
             <NotificationBell />

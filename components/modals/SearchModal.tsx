@@ -128,18 +128,22 @@ const SearchModal = () => {
         <AnimatePresence>
             {isSearchModalOpen && (
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    {...{
+                        initial: { opacity: 0 },
+                        animate: { opacity: 1 },
+                        exit: { opacity: 0 },
+                        transition: { duration: 0.2 },
+                    } as any}
                     className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] px-4"
                     onClick={closeSearchModal}
                 >
                     <motion.div
-                        initial={{ scale: 0.95, y: -20 }}
-                        animate={{ scale: 1, y: 0 }}
-                        exit={{ scale: 0.95, y: -20 }}
-                        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                        {...{
+                            initial: { scale: 0.95, y: -20 },
+                            animate: { scale: 1, y: 0 },
+                            exit: { scale: 0.95, y: -20 },
+                            transition: { type: 'spring', damping: 25, stiffness: 300 },
+                        } as any}
                         className="relative w-full max-w-2xl bg-white dark:bg-slate-800/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-lg shadow-2xl overflow-hidden"
                         onClick={e => e.stopPropagation()}
                     >

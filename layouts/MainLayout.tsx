@@ -18,6 +18,8 @@ const MainLayout: React.FC = () => {
         setMobileSidebarOpen(prev => !prev);
     };
 
+    const isProjectPage = location.pathname.startsWith('/project/');
+
     return (
         <div className="flex h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-50">
             <GlobalSidebar 
@@ -26,9 +28,15 @@ const MainLayout: React.FC = () => {
             />
             <div className="flex-1 flex flex-col overflow-hidden">
                 <Header onMenuClick={handleMenuClick} />
-                <main className="flex-1 overflow-y-auto">
-                    <Outlet />
-                </main>
+                {isProjectPage ? (
+                    <main className="flex-1 flex overflow-hidden">
+                        <Outlet />
+                    </main>
+                ) : (
+                    <main className="flex-1 overflow-y-auto">
+                        <Outlet />
+                    </main>
+                )}
             </div>
         </div>
     );

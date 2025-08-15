@@ -1,5 +1,4 @@
 
-
 import React, { useMemo } from 'react';
 // @ts-ignore
 import { useParams, Outlet } from 'react-router-dom';
@@ -16,9 +15,9 @@ const ProjectLayoutContent = () => {
     return (
          <div className="flex h-full w-full">
             <ProjectSubNav />
-            <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950">
+            <div className="flex-1 min-h-0 bg-slate-50 dark:bg-slate-950 overflow-y-auto">
                 <Outlet />
-            </main>
+            </div>
         </div>
     )
 }

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
@@ -59,12 +60,10 @@ const DataModelPage = () => {
     
     // State for the Task Detail Modal
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-    const [projectMembers, setProjectMembers] = useState<Member[]>([]);
-    const [membersLoading, setMembersLoading] = useState(true);
 
     const userRole = project && currentUser ? project.members[currentUser.uid] : undefined;
-    const isEditor = userRole === 'editor' || userRole === 'owner';
-    const isOwner = userRole === 'owner';
+    const isEditor = userRole?.role === 'editor' || userRole?.role === 'owner';
+    const isOwner = userRole?.role === 'owner';
 
     const entitiesQuery = useMemo(() => query(collection(db, 'projects', projectId, 'entities'), orderBy('name', 'asc')), [projectId]);
     const { data: entities, loading: entitiesLoading, error: entitiesError } = useFirestoreQuery<Entity>(entitiesQuery);
@@ -83,7 +82,11 @@ const DataModelPage = () => {
 
     const categoriesQuery = useMemo(() => query(collection(db, 'projects', projectId, 'taskCategories'), orderBy('name', 'asc')), [projectId]);
     const { data: categories, loading: categoriesLoading, error: categoriesError } = useFirestoreQuery<TaskCategory>(categoriesQuery);
-
+    
+    const projectMembers = useMemo(() => {
+        if (!project?.members) return [];
+        return Object.values(project.members);
+    }, [project]);
 
     // Effect to open task modal from URL
     useEffect(() => {
@@ -95,33 +98,6 @@ const DataModelPage = () => {
         }
     }, [taskIdFromUrl, tasks, selectedTask]);
     
-    // Effect to fetch members when task modal is open
-    useEffect(() => {
-        if (!selectedTask || !project?.memberUids || project.memberUids.length === 0) {
-            setProjectMembers([]);
-            if(selectedTask) setMembersLoading(false);
-            return;
-        }
-        const fetchMembers = async () => {
-            setMembersLoading(true);
-            try {
-                const uids = project.memberUids;
-                const usersRef = collection(db, 'users');
-                const usersData: User[] = [];
-                for (let i = 0; i < uids.length; i += 30) {
-                    const chunk = uids.slice(i, i + 30);
-                    const q = query(usersRef, where('uid', 'in', chunk));
-                    const querySnapshot = await getDocs(q);
-                    querySnapshot.forEach(doc => usersData.push(doc.data() as User));
-                }
-                const combined = usersData.map(user => ({ ...user, role: project.members[user.uid] })).filter(m => m.role);
-                setProjectMembers(combined as Member[]);
-            } catch (e) { console.error("Failed to fetch member details", e); } 
-            finally { setMembersLoading(false); }
-        };
-        fetchMembers();
-    }, [selectedTask, project]);
-
     const entityMap = useMemo(() => new Map(entities?.map(e => [e.id, e.name])), [entities]);
 
     const handleOpenCreateEntity = () => {
@@ -241,7 +217,7 @@ const DataModelPage = () => {
                         entities={entities || []}
                     />
                 )}
-                {selectedTask && !membersLoading && project && (
+                {selectedTask && project && (
                      <TaskDetailModal
                         isOpen={!!selectedTask}
                         onClose={handleCloseTaskModal}

@@ -20,7 +20,7 @@ import {
 } from "@firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "@firebase/storage";
 import { auth, db } from '../firebase/config';
-import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, Feature, Activity, ActivityType, TaskDependency } from '../types';
+import { Project, Task, UserSummary, Comment, User, Module, Entity, Relationship, Notification, Invitation, MemberRole, Member, Credential, TaskLink, TaskStatus, Feature, Activity, ActivityType, TaskDependency, TaskCategory, ProjectMember } from '../types';
 import { getSeedData } from "../utils/seed";
 
 // --- Activity Logging ---
@@ -32,7 +32,8 @@ export const logActivity = async (projectId: string, type: ActivityType, message
     const userSummary: UserSummary = {
         uid: user.uid,
         displayName: user.displayName,
-        photoURL: user.photoURL
+        photoURL: user.photoURL,
+        email: user.email,
     };
 
     const activityRef = collection(db, 'projects', projectId, 'activity');
@@ -80,6 +81,33 @@ export const uploadAvatar = (
   });
 };
 
+export const updateUserProfileInProjects = async (uid: string, updatedData: Partial<Pick<User, 'displayName' | 'photoURL'>>) => {
+    const projectsRef = collection(db, 'projects');
+    const q = query(projectsRef, where('memberUids', 'array-contains', uid));
+    const userProjectsSnap = await getDocs(q);
+
+    if (userProjectsSnap.empty) {
+        return; // User is not in any projects, nothing to do.
+    }
+
+    const batch = writeBatch(db);
+    userProjectsSnap.forEach(projectDoc => {
+        const projectRef = doc(db, 'projects', projectDoc.id);
+        const updatePayload: { [key: string]: any } = {};
+        if (updatedData.displayName !== undefined) {
+            updatePayload[`members.${uid}.displayName`] = updatedData.displayName;
+        }
+        if (updatedData.photoURL !== undefined) {
+            updatePayload[`members.${uid}.photoURL`] = updatedData.photoURL;
+        }
+        if (Object.keys(updatePayload).length > 0) {
+            batch.update(projectRef, updatePayload);
+        }
+    });
+
+    await batch.commit();
+}
+
 
 // --- Notification Functions ---
 
@@ -126,7 +154,15 @@ export const createProject = async (name: string, description: string, user: Use
       name,
       description,
       ownerId: user.uid,
-      members: { [user.uid]: 'owner' },
+      members: {
+        [user.uid]: {
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          email: user.email,
+          role: 'owner' as const
+        }
+      },
       memberUids: [user.uid],
       createdAt: serverTimestamp(),
     };
@@ -196,9 +232,17 @@ export const acceptInvitation = async (invitation: Invitation) => {
     const invitationRef = doc(db, 'invitations', invitation.id);
     const projectRef = doc(db, 'projects', invitation.projectId);
 
+    const newMember: ProjectMember = {
+        uid: user.uid,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+        email: user.email,
+        role: invitation.role
+    };
+
     const batch = writeBatch(db);
     batch.update(projectRef, { 
-        [`members.${user.uid}`]: invitation.role,
+        [`members.${user.uid}`]: newMember,
         memberUids: arrayUnion(user.uid)
     });
     batch.update(invitationRef, { status: 'accepted' });
@@ -220,7 +264,7 @@ export const cancelInvitation = async (invitationId: string) => {
 export const updateMemberRole = async (projectId: string, memberUid: string, newRole: MemberRole) => {
     const projectRef = doc(db, 'projects', projectId);
     await updateDoc(projectRef, {
-        [`members.${memberUid}`]: newRole
+        [`members.${memberUid}.role`]: newRole
     });
 };
 
@@ -232,8 +276,25 @@ export const removeMemberFromProject = async (projectId: string, memberUid: stri
     });
 };
 
+// --- Task Category Functions ---
+export const createTaskCategory = async (projectId: string, data: Omit<TaskCategory, 'id' | 'projectId'>) => {
+    const categoryRef = collection(db, 'projects', projectId, 'taskCategories');
+    await addDoc(categoryRef, { ...data, projectId });
+};
+
+export const updateTaskCategory = async (projectId: string, categoryId: string, data: Partial<Omit<TaskCategory, 'id' | 'projectId'>>) => {
+    const categoryRef = doc(db, 'projects', projectId, 'taskCategories', categoryId);
+    await updateDoc(categoryRef, data);
+};
+
+export const deleteTaskCategory = async (projectId: string, categoryId: string) => {
+    const categoryRef = doc(db, 'projects', projectId, 'taskCategories', categoryId);
+    await deleteDoc(categoryRef);
+};
+
+
 // --- Task Functions ---
-export const createTask = async (projectId: string, projectName: string, taskData: Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId'>>) => {
+export const createTask = async (projectId: string, projectName: string, taskData: Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId' | 'categoryId'>>) => {
     const user = auth.currentUser;
     if (!user) throw new Error("Usuário não autenticado");
 
@@ -245,15 +306,13 @@ export const createTask = async (projectId: string, projectName: string, taskDat
         title: '',
         description: '',
         status: 'todo' as const,
-        subStatus: null,
         assignee: null,
         dueDate: null,
         commentsCount: 0,
         dependencies: [],
         timeLogs: [],
         links: [],
-        categoryId: 'default', // Add a default category or make it a required parameter
-        ...taskData, // Spread the provided data. This will overwrite defaults and add optional fields like featureId if they exist.
+        ...taskData, // Spread the provided data. This will overwrite defaults and add optional fields.
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
     };
@@ -273,23 +332,21 @@ export const createTask = async (projectId: string, projectName: string, taskDat
     }
 };
 
-const getColumnName = (status: TaskStatus, subStatus: Task['subStatus']) => {
+const getColumnName = (status: TaskStatus) => {
     if (status === 'todo') return 'A Fazer';
+    if (status === 'inprogress') return 'Em Progresso';
+    if (status === 'ready_for_qa') return 'Pronto para QA';
+    if (status === 'in_testing') return 'Em Teste';
+    if (status === 'approved') return 'Aprovado';
     if (status === 'done') return 'Concluído';
-    if (status === 'inprogress') {
-        switch(subStatus) {
-            case 'executing': return 'Executando';
-            case 'testing': return 'Em Teste';
-            case 'approved': return 'Aprovado';
-            default: return 'Em Andamento';
-        }
-    }
     return 'um novo estado';
 }
 
 
 export const updateTask = async (projectId: string, taskId: string, data: Partial<Task>) => {
-    const user = auth.currentUser;
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) throw new Error("Usuário não autenticado");
+
     const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
 
     const taskDoc = await getDoc(taskRef);
@@ -297,30 +354,39 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
     const oldTask = taskDoc.data() as Task;
     const newStatus = data.status || oldTask.status;
 
-    // Reproval logic: if a task is reopened while the feature is in testing, move feature back to in_development
-    if (oldTask.status === 'done' && newStatus !== 'done') {
+    const payload: { [key: string]: any } = { ...data, updatedAt: serverTimestamp() };
+
+    // Fetch the user document to check for the active timer
+    const userRef = doc(db, 'users', firebaseUser.uid);
+    const userDocSnap = await getDoc(userRef);
+    const user = userDocSnap.exists() ? userDocSnap.data() as User : null;
+
+    // Stop timer if task is finished or sent to review
+    if (['in_testing', 'approved', 'done'].includes(newStatus) && user?.activeTimer?.taskId === taskId) {
+        await stopTimer();
+    }
+    
+    // Reproval logic: if a task is reopened from a testing/done state, mark it and move the feature back
+    if (['in_testing', 'approved', 'done'].includes(oldTask.status) && ['todo', 'inprogress'].includes(newStatus)) {
+        payload.hasBeenReproved = true;
         const featureId = oldTask.featureId;
         if (featureId) {
             const featureRef = doc(db, 'projects', projectId, 'features', featureId);
             const featureDoc = await getDoc(featureRef);
-            if (featureDoc.exists() && featureDoc.data().status === 'in_testing') {
-                // This is the key part: feature is reproved by reopening a task
-                await updateDoc(featureRef, { status: 'in_development' });
+            if (featureDoc.exists() && ['in_testing', 'approved', 'done'].includes(featureDoc.data().status)) {
+                await updateDoc(featureRef, { status: 'in_development', updatedAt: serverTimestamp() });
             }
         }
     }
     
-    const payload: { [key: string]: any } = { ...data, updatedAt: serverTimestamp() };
     await updateDoc(taskRef, payload);
 
     const statusChanged = 'status' in data && data.status !== oldTask.status;
-    const subStatusChanged = 'subStatus' in data && data.subStatus !== oldTask.subStatus;
 
-    if (user?.displayName && (statusChanged || subStatusChanged)) {
-        const newSubStatus = 'subStatus' in data ? data.subStatus : oldTask.subStatus;
-        const columnName = getColumnName(newStatus, newSubStatus);
+    if (firebaseUser?.displayName && statusChanged) {
+        const columnName = getColumnName(newStatus);
         
-        const message = `${user.displayName} moveu a tarefa "${oldTask.title}" para ${columnName}.`;
+        const message = `${firebaseUser.displayName} moveu a tarefa "${oldTask.title}" para ${columnName}.`;
         await logActivity(projectId, 'task_status_changed', message, taskId);
 
         // QA WORKFLOW LOGIC
@@ -328,26 +394,34 @@ export const updateTask = async (projectId: string, taskId: string, data: Partia
         if (featureId) {
             const featureRef = doc(db, 'projects', projectId, 'features', featureId);
 
-            // Logic to move feature to "in_development"
+            // Logic to move feature to "in_development" when first task starts
             if (oldTask.status === 'todo' && newStatus === 'inprogress') {
                 const featureDoc = await getDoc(featureRef);
                 if (featureDoc.exists() && featureDoc.data().status === 'backlog') {
-                    await updateDoc(featureRef, { status: 'in_development' });
+                    await updateDoc(featureRef, { status: 'in_development', updatedAt: serverTimestamp() });
                 }
             }
+            
+            // LOGIC: Check if the feature can be promoted to testing when a task is moved to 'Ready for QA'
+            if (newStatus === 'ready_for_qa') {
+                const tasksForFeatureQuery = query(
+                    collection(db, 'projects', projectId, 'tasks'),
+                    where('featureId', '==', featureId)
+                );
+                const tasksSnapshot = await getDocs(tasksForFeatureQuery);
+                const featureTasks = tasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
 
-            // Logic to move feature to "in_testing"
-            if (newStatus === 'done') {
-                const tasksQuery = query(collection(db, 'projects', projectId, 'tasks'), where('featureId', '==', featureId));
-                const tasksSnapshot = await getDocs(tasksQuery);
-                
-                const allTasksForFeature = tasksSnapshot.docs.map(d => ({id: d.id, ...d.data()}) as Task);
+                // Check if ALL tasks are 'ready_for_qa' or a later status
+                const allTasksReadyForQA = featureTasks.every(task => {
+                    const statusToCheck = task.id === taskId ? newStatus : task.status;
+                    return ['ready_for_qa', 'in_testing', 'approved', 'done'].includes(statusToCheck);
+                });
 
-                // Check if all tasks for this feature are done
-                const allDone = allTasksForFeature.every(t => t.id === taskId ? data.status === 'done' : t.status === 'done');
-
-                if (allDone) {
-                    await updateDoc(featureRef, { status: 'in_testing' });
+                if (allTasksReadyForQA) {
+                    const featureDoc = await getDoc(featureRef);
+                    if (featureDoc.exists() && featureDoc.data().status === 'in_development') {
+                        await updateDoc(featureRef, { status: 'in_testing', updatedAt: serverTimestamp() });
+                    }
                 }
             }
         }
@@ -375,6 +449,7 @@ export const addTaskComment = async (
         uid: user.uid,
         displayName: user.displayName,
         photoURL: user.photoURL,
+        email: user.email,
     };
     
     await runTransaction(db, async (transaction) => {
@@ -503,6 +578,7 @@ export const startTimer = async (taskId: string, projectId: string) => {
             projectId,
             taskId,
             startTime: serverTimestamp(),
+            userId: user.uid,
         }
     });
 };
@@ -519,7 +595,7 @@ export const stopTimer = async () => {
             return; // No active timer, nothing to do.
         }
 
-        const { projectId, taskId, startTime } = userDoc.data().activeTimer;
+        const { projectId, taskId, startTime, userId } = userDoc.data().activeTimer;
         const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
         
         const now = Timestamp.now();
@@ -527,7 +603,7 @@ export const stopTimer = async () => {
         
         if (durationInSeconds > 0) {
             const timeLog = {
-                userId: user.uid,
+                userId: userId,
                 durationInSeconds,
                 loggedAt: now,
             };
@@ -601,7 +677,8 @@ export const createFeature = async (projectId: string, featureData: Omit<Feature
         ...featureData,
         projectId,
         status: 'backlog',
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
     });
 };
 
@@ -634,8 +711,48 @@ export const deleteFeature = async (projectId: string, featureId:string) => {
 };
 
 export const approveFeature = async (projectId: string, featureId: string) => {
+    const batch = writeBatch(db);
+    
+    // 1. Update the feature status to 'approved'
     const featureRef = doc(db, 'projects', projectId, 'features', featureId);
-    await updateDoc(featureRef, { status: 'approved' });
+    batch.update(featureRef, { status: 'approved', updatedAt: serverTimestamp() });
+    
+    // 2. Find all child tasks that are being tested and move them to 'approved'
+    const tasksQuery = query(
+        collection(db, 'projects', projectId, 'tasks'),
+        where('featureId', '==', featureId),
+        where('status', '==', 'in_testing')
+    );
+    const tasksSnapshot = await getDocs(tasksQuery);
+    tasksSnapshot.forEach(taskDoc => {
+        batch.update(taskDoc.ref, { status: 'approved' });
+    });
+
+    await batch.commit();
+};
+
+export const reproveFeature = async (projectId: string, featureId: string) => {
+    const batch = writeBatch(db);
+
+    // 1. Set feature status back to 'in_development'
+    const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+    batch.update(featureRef, { status: 'in_development', updatedAt: serverTimestamp() });
+
+    // 2. Find all tasks for this feature that are in 'in_testing'
+    const tasksQuery = query(
+        collection(db, 'projects', projectId, 'tasks'), 
+        where('featureId', '==', featureId),
+        where('status', '==', 'in_testing')
+    );
+    const tasksSnapshot = await getDocs(tasksQuery);
+
+    // 3. For each found task, move it back to 'todo' and mark as reproved
+    tasksSnapshot.forEach(doc => {
+        batch.update(doc.ref, { status: 'todo', hasBeenReproved: true });
+    });
+
+    // 4. Commit all batched writes
+    await batch.commit();
 };
 
 
@@ -700,6 +817,52 @@ export const deleteCredential = async (projectId: string, credId: string) => {
     await deleteDoc(credRef);
 };
 
+// --- Test Page Actions ---
+export const approveTask = async (projectId: string, taskId: string, featureId: string) => {
+    const batch = writeBatch(db);
+
+    // 1. Update the task status to 'approved'
+    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
+    batch.update(taskRef, { status: 'approved', updatedAt: serverTimestamp() });
+
+    // 2. Check if all other tasks for the feature are also approved or done
+    const tasksQuery = query(
+        collection(db, 'projects', projectId, 'tasks'),
+        where('featureId', '==', featureId)
+    );
+    const tasksSnapshot = await getDocs(tasksQuery);
+    const featureTasks = tasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+    
+    const allApproved = featureTasks.every(t => 
+        t.id === taskId ? true : ['approved', 'done'].includes(t.status)
+    );
+
+    // 3. If all are approved, promote the feature
+    if (allApproved) {
+        const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+        batch.update(featureRef, { status: 'approved', updatedAt: serverTimestamp() });
+    }
+
+    await batch.commit();
+};
+
+export const reproveTask = async (projectId: string, taskId: string, featureId: string, feedback: string, projectName: string, taskTitle: string, members: Member[]) => {
+    const batch = writeBatch(db);
+
+    // 1. Add feedback as a comment
+    await addTaskComment(projectId, projectName, taskId, taskTitle, feedback, members);
+
+    // 2. Move task back to 'todo'
+    const taskRef = doc(db, 'projects', projectId, 'tasks', taskId);
+    batch.update(taskRef, { status: 'todo', hasBeenReproved: true, updatedAt: serverTimestamp() });
+
+    // 3. Move feature back to 'in_development'
+    const featureRef = doc(db, 'projects', projectId, 'features', featureId);
+    batch.update(featureRef, { status: 'in_development', updatedAt: serverTimestamp() });
+
+    await batch.commit();
+};
+
 // --- Database Seeding ---
 export const seedDatabase = async (currentUser: User) => {
     if (!currentUser.email) throw new Error("Current user has no email for seeding.");
@@ -708,11 +871,13 @@ export const seedDatabase = async (currentUser: User) => {
         projectData, 
         modulesData, 
         entitiesData, 
-        relationshipsData, 
+        relationshipsData,
+        featuresData,
         tasksData, 
         mockUsers,
         commentsData,
         taskCategoriesData,
+        activitiesData,
     } = getSeedData(currentUser);
     
     const batch = writeBatch(db);
@@ -760,7 +925,27 @@ export const seedDatabase = async (currentUser: User) => {
         batch.set(docRef, { content: module.documentation, updatedAt: serverTimestamp() });
     }
 
-    // 4. Create Entities, storing their IDs
+    // 4. Create Features, storing their IDs
+    const featureNameToIdMap = new Map<string, string>();
+    for (const feature of featuresData) {
+        const featureRef = doc(collection(db, 'projects', projectId, 'features'));
+        const moduleId = moduleNameToIdMap.get(feature.moduleName);
+        if (moduleId) {
+            batch.set(featureRef, {
+                projectId,
+                name: feature.name,
+                description: feature.description,
+                moduleId: moduleId,
+                userFlows: feature.userFlows,
+                testCases: feature.testCases,
+                status: (feature as any).status || 'backlog',
+                createdAt: serverTimestamp(),
+            });
+            featureNameToIdMap.set(feature.name, featureRef.id);
+        }
+    }
+
+    // 5. Create Entities, storing their IDs
     const entityNameToIdMap = new Map<string, string>();
     for (const entity of entitiesData) {
         const entityRef = doc(collection(db, 'projects', projectId, 'entities'));
@@ -774,7 +959,7 @@ export const seedDatabase = async (currentUser: User) => {
         entityNameToIdMap.set(entity.name, entityRef.id);
     }
     
-    // 5. Create Relationships using stored IDs
+    // 6. Create Relationships using stored IDs
     for (const rel of relationshipsData) {
         const sourceEntityId = entityNameToIdMap.get(rel.sourceEntityName);
         const targetEntityId = entityNameToIdMap.get(rel.targetEntityName);
@@ -791,38 +976,57 @@ export const seedDatabase = async (currentUser: User) => {
         }
     }
     
-    // 6. Create Tasks, linking to modules using stored IDs
-    const taskIndexToIdMap = new Map<number, string>();
-    for (let i = 0; i < tasksData.length; i++) {
-        const task = tasksData[i];
-        const taskRef = doc(collection(db, 'projects', projectId, 'tasks'));
-        taskIndexToIdMap.set(i, taskRef.id);
+    // 7. Create Tasks, resolving dependencies
+    const taskRefsWithIds = tasksData.map((_, i) => {
+        const ref = doc(collection(db, 'projects', projectId, 'tasks'));
+        return { ref, id: ref.id, index: i };
+    });
+    const taskIndexToIdMap = new Map<number, string>(taskRefsWithIds.map(d => [d.index, d.id]));
+    
+    for (const { ref, index } of taskRefsWithIds) {
+        const task = tasksData[index];
         const moduleId = moduleNameToIdMap.get(task.moduleName);
-        
-        const taskPayload: Omit<Task, 'id' | 'createdAt' | 'updatedAt'> = {
+        const featureId = task.featureName ? featureNameToIdMap.get(task.featureName) : undefined;
+    
+        const resolvedDependencies = (task.dependencies || []).map(dep => {
+            const taskId = taskIndexToIdMap.get(dep.taskIndex);
+            if (!taskId) return null;
+            return { type: dep.type, taskId: taskId };
+        }).filter(Boolean) as TaskDependency[];
+    
+        const taskPayload: Partial<Omit<Task, 'id' | 'createdAt' | 'updatedAt'>> = {
             projectId,
             title: task.title,
             description: task.description,
             status: task.status,
             assignee: task.assignee,
-            subStatus: task.status === 'inprogress' ? 'executing' : null,
             commentsCount: task.commentsCount,
             dueDate: task.dueDate || null,
-            dependencies: [],
+            dependencies: resolvedDependencies,
             links: [],
-            timeLogs: [],
+            timeLogs: task.timeLogs || [],
             moduleId: moduleId,
-            categoryId: task.categoryName ? categoryNameToIdMap.get(task.categoryName) || 'feature_cat' : 'feature_cat',
-            // featureId is not part of seed data, so it will be undefined
         };
-        batch.set(taskRef, {
+
+        if (featureId) {
+            taskPayload.featureId = featureId;
+        }
+
+        if (task.categoryName) {
+            const categoryId = categoryNameToIdMap.get(task.categoryName);
+            if (categoryId) {
+                taskPayload.categoryId = categoryId;
+            }
+        }
+        
+        batch.set(ref, {
             ...taskPayload,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         });
     }
 
-    // 7. Create Comments, linking to tasks using stored IDs
+    // 8. Create Comments, linking to tasks using stored IDs
     for (const commentGroup of commentsData) {
         const taskId = taskIndexToIdMap.get(commentGroup.taskId);
         if (taskId) {
@@ -834,6 +1038,23 @@ export const seedDatabase = async (currentUser: User) => {
                 });
             }
         }
+    }
+
+    // 9. Create Activities, linking to tasks using stored IDs
+    for (const activity of activitiesData) {
+        const taskId = activity.taskIndex !== undefined ? taskIndexToIdMap.get(activity.taskIndex) : undefined;
+        const activityRef = doc(collection(db, 'projects', projectId, 'activity'));
+        
+        const activityPayload: Omit<Activity, 'id'> = {
+            projectId,
+            type: activity.type,
+            message: activity.message,
+            user: activity.user,
+            createdAt: activity.createdAt,
+            ...(taskId && { taskId })
+        };
+        
+        batch.set(activityRef, activityPayload);
     }
 
     await batch.commit();

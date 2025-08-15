@@ -8,14 +8,15 @@ import { getFirestore, enableIndexedDbPersistence } from "@firebase/firestore";
 // Go to your project's dashboard: https://console.firebase.google.com/
 // Select your project, go to Project Settings (gear icon), and find the config for your web app.
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || undefined, // Optional, only if you use Google Analytics
+  apiKey: "AIzaSyCWs_QpLPvC5EvhaU0tgFxwNILbdUUxUq0",
+  authDomain: "project-flow-7b02c.firebaseapp.com",
+  projectId: "project-flow-7b02c",
+  storageBucket: "project-flow-7b02c.firebasestorage.app",
+  messagingSenderId: "179160823405",
+  appId: "1:179160823405:web:30add63ca5b9cf9ee13164",
+  measurementId: "G-8S6ZYN96BW"
 };
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 

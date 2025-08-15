@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, Lock, GripVertical, Clock, Play, Pause, Link2 } from 'lucide-react';
+import { MessageSquare, Lock, GripVertical, Clock, Play, Pause, Link2, AlertTriangle, Send, Loader2 } from 'lucide-react';
 import { Task, User, Module } from '../../types';
 import Avatar from '../ui/Avatar';
 import Badge from '../ui/Badge';
 import { useTimeTracking, formatDuration } from '../../utils/placeholder';
 import IconRenderer from '../ui/IconRenderer';
+import Button from '../ui/Button';
 
 
 interface TaskCardProps {
@@ -55,24 +56,32 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandle
     };
 
     const statusBorderColor = 
+        task.hasBeenReproved ? 'border-orange-500' :
         task.status === 'done' ? 'border-green-500' :
+        task.status === 'approved' ? 'border-cyan-500' :
+        task.status === 'in_testing' ? 'border-amber-500' :
+        task.status === 'ready_for_qa' ? 'border-violet-500' :
         task.status === 'inprogress' ? 'border-blue-500' :
         'border-slate-400 dark:border-slate-600';
+    
+    const canBeClicked = !['in_testing', 'approved', 'done'].includes(task.status);
 
   return (
     <motion.div
       {...{layoutId: task.id} as any}
-      onClick={!isBlocked ? onClick : undefined}
-      className={`group relative bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm border-l-4 ${statusBorderColor} transition-all duration-200 hover:shadow-md hover:border-brand-500 ${isDragging ? 'shadow-xl rotate-1' : ''} ${isBlocked ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+      onClick={canBeClicked ? onClick : undefined}
+      className={`group relative bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm border-l-4 ${statusBorderColor} transition-all duration-200 hover:shadow-md hover:border-brand-500 ${isDragging ? 'shadow-xl rotate-1' : ''} ${!canBeClicked ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
     >
-      <div 
-        {...dragHandleListeners}
-        aria-label="Alça de arrastar"
-        className="absolute top-1 right-1 p-1.5 text-slate-400 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 cursor-grab touch-none opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <GripVertical size={16} />
-      </div>
+      {!['in_testing', 'approved', 'done'].includes(task.status) && (
+        <div 
+            {...dragHandleListeners}
+            aria-label="Alça de arrastar"
+            className="absolute top-1 right-1 p-1.5 text-slate-400 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 cursor-grab touch-none opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => e.stopPropagation()}
+        >
+            <GripVertical size={16} />
+        </div>
+      )}
 
       <div className="pr-6">
         <div className="flex items-center gap-2 mb-2">
@@ -96,6 +105,11 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandle
 
       <div className="flex justify-between items-end mt-4">
         <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+          {task.hasBeenReproved && (
+            <div className="flex items-center gap-1 text-orange-500" title="Esta tarefa foi reprovada no teste e requer correção.">
+              <AlertTriangle size={14} />
+            </div>
+          )}
           {(task.commentsCount ?? 0) > 0 && (
             <div className="flex items-center gap-1" title={`${task.commentsCount} comentários`}>
               <MessageSquare size={14} />
@@ -139,6 +153,7 @@ const TaskCard = ({ task, onClick, isDragging, isBlocked, moduleInfo, dragHandle
         </div>
       </div>
        {timerError && <p className="text-xs text-red-500 mt-2 text-right">{timerError}</p>}
+       
     </motion.div>
   );
 };

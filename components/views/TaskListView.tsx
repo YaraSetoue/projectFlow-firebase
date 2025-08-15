@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Loader2, ArrowUpDown, MoreHorizontal, Trash2, ChevronDown, Check, ArrowUp, ArrowDown, Eye, Link as LinkIcon } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Task, Member, TaskStatus, User, Module } from '../../types';
 import { updateTask, deleteTask, stopTimer } from '../../services/firestoreService';
 import Avatar from '../ui/Avatar';
@@ -20,15 +21,21 @@ interface SortConfig {
     direction: SortDirection;
 }
 
-const statusColors: Record<string, string> = {
+const statusColors: Record<TaskStatus, string> = {
     todo: 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
     inprogress: 'bg-blue-200 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
+    ready_for_qa: 'bg-violet-200 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300',
+    in_testing: 'bg-amber-200 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300',
+    approved: 'bg-cyan-200 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-300',
     done: 'bg-green-200 dark:bg-green-900/40 text-green-600 dark:text-green-300',
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
     todo: 'A Fazer',
-    inprogress: 'Em Andamento',
+    inprogress: 'Em Progresso',
+    ready_for_qa: 'Pronto para QA',
+    in_testing: 'Em Teste',
+    approved: 'Aprovado',
     done: 'Concluído',
 };
 
@@ -53,10 +60,10 @@ const SortableHeader = ({ title, sortKey, sortConfig, requestSort, className }: 
 const StatusSelector = ({ task, isEditor, currentUser }: { task: Task, isEditor: boolean, currentUser: User | null }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
-    const statuses: TaskStatus[] = ['todo', 'inprogress', 'done'];
+    const statuses: TaskStatus[] = ['todo', 'inprogress', 'ready_for_qa', 'in_testing', 'approved', 'done'];
 
     const handleStatusChange = async (newStatus: TaskStatus) => {
-        if (!isEditor || newStatus === task.status) {
+        if (!isEditor || newStatus === task.status || ['in_testing', 'approved', 'done'].includes(task.status)) {
             setIsOpen(false);
             return;
         }
@@ -65,9 +72,6 @@ const StatusSelector = ({ task, isEditor, currentUser }: { task: Task, isEditor:
         setIsOpen(false);
 
         try {
-            if (newStatus === 'done' && currentUser?.activeTimer?.taskId === task.id) {
-                await stopTimer();
-            }
             await updateTask(task.projectId, task.id, { status: newStatus });
         } catch (error) {
             console.error("Failed to update status", error);
@@ -75,6 +79,8 @@ const StatusSelector = ({ task, isEditor, currentUser }: { task: Task, isEditor:
             setIsUpdating(false);
         }
     };
+    
+    const canChangeStatus = isEditor && !['in_testing', 'approved', 'done'].includes(task.status);
 
     return (
         <Popover
@@ -83,20 +89,20 @@ const StatusSelector = ({ task, isEditor, currentUser }: { task: Task, isEditor:
             trigger={
                 <button
                     onClick={() => setIsOpen(true)}
-                    disabled={!isEditor || isUpdating}
-                    className={`inline-flex items-center justify-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors min-w-[120px] ${statusColors[task.status]} ${isEditor ? 'cursor-pointer hover:opacity-80' : 'cursor-not-allowed'}`}
+                    disabled={!canChangeStatus || isUpdating}
+                    className={`inline-flex items-center justify-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors min-w-[120px] ${statusColors[task.status]} ${canChangeStatus ? 'cursor-pointer hover:opacity-80' : 'cursor-not-allowed'}`}
                 >
                     {isUpdating ? (
                         <Loader2 className="h-4 w-4 animate-spin"/>
                     ) : (
                         <>
                             <span className="flex-grow text-left">{STATUS_LABELS[task.status]}</span>
-                            {isEditor && <ChevronDown className="h-4 w-4" />}
+                            {canChangeStatus && <ChevronDown className="h-4 w-4" />}
                         </>
                     )}
                 </button>
             }
-            className="w-40"
+            className="w-48"
         >
             <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg p-1">
                 {statuses.map(status => (
@@ -127,7 +133,7 @@ const TaskActions = ({ task, onTaskClick, isEditor }: { task: Task, onTaskClick:
             setIsAlertOpen(false);
         } catch (error) {
             console.error(error);
-            alert("Falha ao excluir tarefa.");
+            toast.error("Falha ao excluir tarefa.");
             setIsAlertOpen(false);
         } finally {
             setIsDeleting(false);

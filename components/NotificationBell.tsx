@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 // @ts-ignore
 import { useNavigate } from 'react-router-dom';
 import { Bell, UserPlus, MessageSquare, Check, X, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 import { useNotifications, UnifiedNotification } from '../hooks/useNotifications';
 import { markNotificationAsRead, acceptInvitation, declineInvitation, markAllNotificationsAsRead } from '../services/firestoreService';
@@ -45,7 +46,7 @@ const NotificationBell = () => {
              navigate(`/project/${invitation.projectId}`);
         } catch (error) {
             console.error("Failed to accept invitation:", error);
-            alert("Falha ao aceitar o convite. Tente novamente.");
+            toast.error("Falha ao aceitar o convite. Tente novamente.");
         } finally {
             setBusyIds(prev => prev.filter(id => id !== invitation.id));
         }
@@ -57,7 +58,7 @@ const NotificationBell = () => {
             await declineInvitation(invitationId);
         } catch (error) {
             console.error("Failed to decline invitation:", error);
-            alert("Falha ao recusar o convite. Tente novamente.");
+            toast.error("Falha ao recusar o convite. Tente novamente.");
         } finally {
             setBusyIds(prev => prev.filter(id => id !== invitationId));
         }
@@ -75,7 +76,7 @@ const NotificationBell = () => {
             await markAllNotificationsAsRead(notificationIdsToMark);
         } catch (err) {
             console.error("Failed to mark all as read:", err);
-            alert("Failed to mark all notifications as read.");
+            toast.error("Failed to mark all notifications as read.");
         } finally {
             setIsMarkingAll(false);
         }
@@ -99,7 +100,7 @@ const NotificationBell = () => {
             onClose={() => setIsOpen(false)}
             trigger={
                 <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)} className="relative">
-                    <Bell />
+                    <Bell className="h-[1.2rem] w-[1.2rem]" />
                     {count > 0 && (
                         <span className="absolute top-1 right-1 flex h-3 w-3">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75"></span>

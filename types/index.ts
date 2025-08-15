@@ -21,6 +21,7 @@ export interface ActiveTimer {
   projectId: string;
   taskId: string;
   startTime: Timestamp;
+  userId: string;
 }
 
 export interface User {
@@ -55,9 +56,17 @@ export interface Notification {
 export type MemberRole = 'owner' | 'editor' | 'viewer';
 export const MEMBER_ROLES: MemberRole[] = ['editor', 'viewer'];
 
-export interface Member extends User {
-    role: MemberRole;
+export interface UserSummary {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
 }
+
+export interface ProjectMember extends UserSummary {
+  role: MemberRole;
+}
+export type Member = ProjectMember;
 
 export interface Invitation {
     id: string;
@@ -79,7 +88,7 @@ export interface Project {
   name: string;
   description: string;
   ownerId: string;
-  members: { [key: string]: MemberRole };
+  members: { [uid: string]: ProjectMember };
   memberUids: string[];
   createdAt: Timestamp;
   credentialsSalt?: string;
@@ -94,13 +103,7 @@ export type RegisterData = LoginData & {
     displayName:string;
 }
 
-export type TaskStatus = 'todo' | 'inprogress' | 'done';
-
-export interface UserSummary {
-  uid: string;
-  displayName: string | null;
-  photoURL: string | null;
-}
+export type TaskStatus = 'todo' | 'inprogress' | 'ready_for_qa' | 'in_testing' | 'approved' | 'done';
 
 export interface Module {
     id: string;
@@ -135,7 +138,6 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
-  subStatus?: 'executing' | 'testing' | 'approved' | null;
   assignee: UserSummary | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -144,9 +146,10 @@ export interface Task {
   dependencies?: TaskDependency[]; // Array of task dependency objects
   featureId?: string;
   moduleId?: string;
-  categoryId: string;
+  categoryId?: string;
   timeLogs?: TimeLog[];
   links?: TaskLink[];
+  hasBeenReproved?: boolean;
 }
 
 export interface Comment {
@@ -235,7 +238,8 @@ export interface Feature {
   userFlows: UserFlow[];
   testCases: TestCase[];
   createdAt: Timestamp;
-  status: 'backlog' | 'in_development' | 'in_testing' | 'approved' | 'released';
+  updatedAt?: Timestamp;
+  status: 'backlog' | 'in_development' | 'in_testing' | 'approved' | 'released' | 'done';
 }
 
 // --- Activity Feed Types ---

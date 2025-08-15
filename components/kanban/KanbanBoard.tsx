@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,7 +6,7 @@ import { XCircle, AlertTriangle } from 'lucide-react';
 
 import KanbanColumn from './KanbanColumn';
 import { Task, TaskStatus, User, Module, TaskCategory } from '../../types';
-import { updateTask, stopTimer } from '../../services/firestoreService';
+import { updateTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
 
 interface KanbanBoardProps {
@@ -17,9 +17,16 @@ interface KanbanBoardProps {
     taskCategories: TaskCategory[];
 }
 
-const KanbanBoard = ({ tasks, projectId, onTaskClick, moduleLookup, taskCategories }: KanbanBoardProps) => {
+const KanbanBoard = ({ tasks: tasksFromFirestore, projectId, onTaskClick, moduleLookup, taskCategories }: KanbanBoardProps) => {
     const { currentUser } = useAuth();
     const [dndError, setDndError] = useState<string | null>(null);
+    const [localTasks, setLocalTasks] = useState<Task[]>([]);
+
+    useEffect(() => {
+      if (tasksFromFirestore) {
+        setLocalTasks(tasksFromFirestore);
+      }
+    }, [tasksFromFirestore]);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -31,46 +38,29 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, moduleLookup, taskCategori
     const categoriesMap = useMemo(() => new Map(taskCategories.map(c => [c.id, c])), [taskCategories]);
 
     const tasksByColumn = useMemo(() => {
-        const initialColumns: {
-            todo: Task[];
-            executing: Task[];
-            testing: Task[];
-            approved: Task[];
-            done: Task[];
-        } = { todo: [], executing: [], testing: [], approved: [], done: [] };
+        const initialColumns: Record<TaskStatus, Task[]> = { 
+            todo: [], 
+            inprogress: [], 
+            ready_for_qa: [], 
+            in_testing: [],
+            approved: [],
+            done: []
+        };
         
-        return tasks.reduce((acc, task) => {
-            if (task.status === 'todo') {
-                acc.todo.push(task);
-            } else if (task.status === 'done') {
-                acc.done.push(task);
-            } else if (task.status === 'inprogress') {
-                switch(task.subStatus) {
-                    case 'executing':
-                        acc.executing.push(task);
-                        break;
-                    case 'testing':
-                        acc.testing.push(task);
-                        break;
-                    case 'approved':
-                        acc.approved.push(task);
-                        break;
-                    default:
-                        // Fallback for older tasks without subStatus
-                        acc.executing.push(task);
-                        break;
-                }
+        return localTasks.reduce((acc, task) => {
+            if (acc[task.status]) {
+                acc[task.status].push(task);
             }
             return acc;
         }, initialColumns);
 
-    }, [tasks]);
+    }, [localTasks]);
 
     const blockedStatusLookup = useMemo(() => {
         const lookup: Record<string, boolean> = {};
-        const tasksById = new Map(tasks.map(t => [t.id, t]));
+        const tasksById = new Map(localTasks.map(t => [t.id, t]));
 
-        tasks.forEach(task => {
+        localTasks.forEach(task => {
             const blockingDeps = task.dependencies?.filter(d => d.type === 'blocked_by');
             if (blockingDeps && blockingDeps.length > 0) {
                 lookup[task.id] = blockingDeps.some(dep => {
@@ -80,83 +70,60 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, moduleLookup, taskCategori
             }
         });
         return lookup;
-    }, [tasks]);
+    }, [localTasks]);
     
     const handleDragStart = (event: DragStartEvent) => {
         setDndError(null);
     };
 
-    const handleDragEnd = async (event: DragEndEvent) => {
+    const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
-        console.log("Drag End Event:", event);
-        console.log("Item Ativo (arrastado):", active.id);
-        console.log("Contêiner Destino (soltado):", over?.id);
-
-        if (over && active.id !== over.id) {
-            const taskId = active.id as string;
-            const newColumnId = over.id as 'todo' | 'executing' | 'testing' | 'approved' | 'done';
-            
-            const task = tasks.find(t => t.id === taskId);
-            if (!task) return;
-
-            const taskCategory = categoriesMap.get(task.categoryId);
-            
-            // Validation for testing/approved columns
-            if ((newColumnId === 'testing' || newColumnId === 'approved') && !taskCategory?.requiresTesting) {
-                setDndError(`A tarefa "${task.title}" não pode ser movida para esta coluna porque sua categoria não requer testes.`);
-                return;
-            }
-
-            // Validation for blocked tasks
-            const isBlocked = blockedStatusLookup[taskId];
-            if (isBlocked && newColumnId !== 'todo') {
-                 setDndError(`A tarefa "${task.title}" não pode ser iniciada pois está bloqueada por outras tarefas.`);
-                return;
-            }
-
-            let newStatus: TaskStatus = 'inprogress';
-            let newSubStatus: Task['subStatus'] = null;
-
-            switch(newColumnId) {
-                case 'todo':
-                    newStatus = 'todo';
-                    newSubStatus = null;
-                    break;
-                case 'executing':
-                    newStatus = 'inprogress';
-                    newSubStatus = 'executing';
-                    break;
-                case 'testing':
-                    newStatus = 'inprogress';
-                    newSubStatus = 'testing';
-                    break;
-                case 'approved':
-                    newStatus = 'inprogress';
-                    newSubStatus = 'approved';
-                    break;
-                case 'done':
-                    newStatus = 'done';
-                    newSubStatus = null;
-                    break;
-            }
-            
-            // Prevent redundant updates
-            if (task.status === newStatus && task.subStatus === newSubStatus) return;
-
-            try {
-                if (newStatus === 'done' && currentUser?.activeTimer?.taskId === taskId) {
-                    await stopTimer();
-                }
-                
-                await updateTask(projectId, taskId, { status: newStatus, subStatus: newSubStatus });
-            
-            } catch (err: any) {
-                console.error("Failed to update task status:", err);
-                setDndError(err.message || "Não foi possível salvar a movimentação da tarefa. Verifique sua conexão e tente novamente.");
-            }
+        if (!active || !over) return;
+    
+        const taskId = active.id as string;
+        const task = localTasks.find(t => t.id === taskId);
+        if (!task) return;
+    
+        const overId = over.id as string;
+    
+        // Determine the new status. If `overId` is a column ID, use it.
+        // Otherwise, find the task we're dropping on and use its status.
+        const newStatus = (Object.keys(tasksByColumn).includes(overId))
+          ? overId as TaskStatus
+          : localTasks.find(t => t.id === overId)?.status;
+    
+        if (!newStatus || task.status === newStatus) {
+          return;
         }
-    };
 
+        // Validation logic
+        if (['in_testing', 'approved', 'done'].includes(newStatus) && !task.featureId) {
+            setDndError("Apenas tarefas associadas a uma funcionalidade podem ser movidas para Teste, Aprovado ou Concluído.");
+            return;
+        }
+        
+        const isBlocked = blockedStatusLookup[taskId];
+        if (isBlocked && newStatus !== 'todo') {
+             setDndError(`A tarefa "${task.title}" não pode ser iniciada pois está bloqueada por outras tarefas.`);
+            return;
+        }
+
+        // 1. Optimistic update on local state
+        const updatedTasks = localTasks.map(t => 
+            t.id === taskId ? { ...t, status: newStatus } : t
+        );
+        setLocalTasks(updatedTasks);
+
+        // 2. Backend call in the background
+        updateTask(projectId, taskId, { status: newStatus })
+            .catch(error => {
+                console.error("Falha ao atualizar a tarefa:", error);
+                // On failure, revert local state to the original from Firestore
+                setLocalTasks(tasksFromFirestore || []);
+                setDndError("Não foi possível mover a tarefa. A alteração foi desfeita.");
+            });
+    };
+    
     return (
         <>
             <AnimatePresence>
@@ -181,52 +148,13 @@ const KanbanBoard = ({ tasks, projectId, onTaskClick, moduleLookup, taskCategori
                 )}
             </AnimatePresence>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 h-full">
-                    <KanbanColumn
-                        id="todo"
-                        title="A Fazer"
-                        tasks={tasksByColumn.todo || []}
-                        onTaskClick={onTaskClick}
-                        blockedStatusLookup={blockedStatusLookup}
-                        moduleLookup={moduleLookup}
-                        currentUser={currentUser}
-                    />
-                    <KanbanColumn
-                        id="executing"
-                        title="Executando"
-                        tasks={tasksByColumn.executing || []}
-                        onTaskClick={onTaskClick}
-                        blockedStatusLookup={blockedStatusLookup}
-                        moduleLookup={moduleLookup}
-                        currentUser={currentUser}
-                    />
-                     <KanbanColumn
-                        id="testing"
-                        title="Em Teste"
-                        tasks={tasksByColumn.testing || []}
-                        onTaskClick={onTaskClick}
-                        blockedStatusLookup={blockedStatusLookup}
-                        moduleLookup={moduleLookup}
-                        currentUser={currentUser}
-                    />
-                     <KanbanColumn
-                        id="approved"
-                        title="Aprovado"
-                        tasks={tasksByColumn.approved || []}
-                        onTaskClick={onTaskClick}
-                        blockedStatusLookup={blockedStatusLookup}
-                        moduleLookup={moduleLookup}
-                        currentUser={currentUser}
-                    />
-                    <KanbanColumn
-                        id="done"
-                        title="Concluído"
-                        tasks={tasksByColumn.done || []}
-                        onTaskClick={onTaskClick}
-                        blockedStatusLookup={blockedStatusLookup}
-                        moduleLookup={moduleLookup}
-                        currentUser={currentUser}
-                    />
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 h-full">
+                    <KanbanColumn id="todo" title="A Fazer" tasks={tasksByColumn.todo} onTaskClick={onTaskClick} blockedStatusLookup={blockedStatusLookup} moduleLookup={moduleLookup} currentUser={currentUser} />
+                    <KanbanColumn id="inprogress" title="Em Progresso" tasks={tasksByColumn.inprogress} onTaskClick={onTaskClick} blockedStatusLookup={blockedStatusLookup} moduleLookup={moduleLookup} currentUser={currentUser} />
+                    <KanbanColumn id="ready_for_qa" title="Pronto para QA" tasks={tasksByColumn.ready_for_qa} onTaskClick={onTaskClick} blockedStatusLookup={blockedStatusLookup} moduleLookup={moduleLookup} currentUser={currentUser} />
+                    <KanbanColumn id="in_testing" title="Em Teste" tasks={tasksByColumn.in_testing} onTaskClick={onTaskClick} blockedStatusLookup={blockedStatusLookup} moduleLookup={moduleLookup} currentUser={currentUser} />
+                    <KanbanColumn id="approved" title="Aprovado" tasks={tasksByColumn.approved} onTaskClick={onTaskClick} blockedStatusLookup={blockedStatusLookup} moduleLookup={moduleLookup} currentUser={currentUser} />
+                    <KanbanColumn id="done" title="Concluído" tasks={tasksByColumn.done} onTaskClick={onTaskClick} blockedStatusLookup={blockedStatusLookup} moduleLookup={moduleLookup} currentUser={currentUser} />
                 </div>
             </DndContext>
         </>

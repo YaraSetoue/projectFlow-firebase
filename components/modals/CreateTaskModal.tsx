@@ -2,14 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { Timestamp } from '@firebase/firestore';
 import { createTask } from '../../services/firestoreService';
 import { useAuth } from '../../hooks/useAuth';
-import { UserSummary, Module, Member, Feature, Task } from '../../types';
+import { UserSummary, Module, Member, Feature, Task, TaskCategory } from '../../types';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
-import { Loader2, ChevronDown, UserCircle, Check } from 'lucide-react';
+import { Loader2, ChevronDown, UserCircle, Check, List } from 'lucide-react';
 import Popover from '../ui/Popover';
 import Avatar from '../ui/Avatar';
+import IconRenderer from '../ui/IconRenderer';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -19,14 +20,16 @@ interface CreateTaskModalProps {
   projectMembers: Member[];
   modules: Module[];
   features: Feature[];
+  categories: TaskCategory[];
 }
 
-const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, features }) => {
+const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, projectId, projectName, projectMembers, modules, features, categories }) => {
   const { currentUser } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignee, setAssignee] = useState<UserSummary | null>(null);
   const [featureId, setFeatureId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,6 +37,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
   // Popover states
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
   const [isFeaturePopoverOpen, setIsFeaturePopoverOpen] = useState(false);
+  const [isCategoryPopoverOpen, setIsCategoryPopoverOpen] = useState(false);
   
   const groupedFeatures = useMemo(() => {
     if (!features || !modules) return [];
@@ -55,11 +59,13 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       setDescription('');
       setAssignee(null);
       setFeatureId('');
+      setCategoryId('');
       setDueDate('');
       setError('');
       setIsLoading(false);
       setIsAssigneeOpen(false);
       setIsFeaturePopoverOpen(false);
+      setIsCategoryPopoverOpen(false);
   };
   
   const handleClose = () => {
@@ -88,9 +94,8 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
         description: description,
       };
   
-      if (assignee) {
-        taskPayload.assignee = assignee;
-      }
+      if (assignee) taskPayload.assignee = assignee;
+      if (categoryId) taskPayload.categoryId = categoryId;
       if (featureId) {
         taskPayload.featureId = featureId;
         const feature = features.find(f => f.id === featureId);
@@ -105,7 +110,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
       await createTask(
           projectId, 
           projectName, 
-          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId'>>
+          taskPayload as Partial<Pick<Task, 'title' | 'description' | 'assignee' | 'featureId' | 'dueDate' | 'moduleId' | 'categoryId'>>
       );
       
       handleClose();
@@ -119,6 +124,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
   };
 
   const selectedFeatureName = useMemo(() => features.find(f => f.id === featureId)?.name, [features, featureId]);
+  const selectedCategory = useMemo(() => categories.find(c => c.id === categoryId), [categories, categoryId]);
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Criar Nova Tarefa">
@@ -183,7 +189,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                                     key={member.uid}
                                     className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm"
                                     onClick={() => {
-                                        setAssignee({ uid: member.uid, displayName: member.displayName, photoURL: member.photoURL });
+                                        setAssignee({ uid: member.uid, displayName: member.displayName, photoURL: member.photoURL, email: member.email });
                                         setIsAssigneeOpen(false);
                                     }}
                                 >
@@ -212,8 +218,36 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClose, proj
                 </div>
             </div>
             
-            <div className="grid grid-cols-1">
-                <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div>
+                    <label htmlFor="categoryId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Categoria</label>
+                     <Popover
+                        isOpen={isCategoryPopoverOpen}
+                        onClose={() => setIsCategoryPopoverOpen(false)}
+                        trigger={
+                            <Button type="button" variant="outline" className="w-full justify-between text-left h-auto py-2" onClick={() => setIsCategoryPopoverOpen(true)} disabled={isLoading}>
+                                <span className="flex items-center gap-2">
+                                    {selectedCategory ? <IconRenderer name={selectedCategory.icon} className="h-4 w-4" /> : <List className="h-4 w-4 text-slate-400"/>}
+                                    <span className="truncate">{selectedCategory ? selectedCategory.name : 'Nenhuma'}</span>
+                                </span>
+                                <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0" />
+                            </Button>
+                        }>
+                         <div className="w-full bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            <div className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setCategoryId(''); setIsCategoryPopoverOpen(false); }}>
+                                <span className="flex items-center gap-2"><List className="h-4 w-4 text-slate-400"/> Nenhuma Categoria</span>
+                                {!categoryId && <Check className="h-4 w-4 text-brand-500"/>}
+                            </div>
+                            {categories.map(cat => (
+                                <div key={cat.id} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer flex items-center justify-between text-sm" onClick={() => { setCategoryId(cat.id); setIsCategoryPopoverOpen(false); }}>
+                                    <span className="flex items-center gap-2"><IconRenderer name={cat.icon} className="h-4 w-4"/> {cat.name}</span>
+                                    {categoryId === cat.id && <Check className="h-4 w-4 text-brand-500"/>}
+                                </div>
+                            ))}
+                        </div>
+                     </Popover>
+                 </div>
+                 <div>
                   <label htmlFor="featureId" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Funcionalidade Relacionada
                   </label>

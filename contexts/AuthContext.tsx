@@ -12,9 +12,11 @@ import {
   User as FirebaseUser 
 } from '@firebase/auth';
 import { doc, setDoc, serverTimestamp, updateDoc, getDoc, onSnapshot } from '@firebase/firestore';
+import toast from 'react-hot-toast';
+
 import { auth, db } from '../firebase/config';
 import { User, RegisterData, LoginData, AccountProfileData } from '../types';
-import { uploadAvatar } from '../services/firestoreService';
+import { uploadAvatar, updateUserProfileInProjects } from '../services/firestoreService';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -113,9 +115,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const domain = window.location.hostname;
         const errorMessage = `Login falhou: O domínio desta aplicação (${domain}) não está autorizado para autenticação. Para corrigir, adicione o domínio à lista de 'Domínios autorizados' nas configurações de autenticação do seu projeto Firebase.`;
         console.error(errorMessage);
-        alert(errorMessage);
+        toast.error(errorMessage, { duration: 10000 });
       } else {
-        alert(`Ocorreu um erro durante o login. Por favor, tente novamente.\n\nErro: ${error.message}`);
+        toast.error(`Ocorreu um erro durante o login. Por favor, tente novamente.`);
       }
       throw error;
     }
@@ -159,17 +161,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   
   const updateAccountProfile = async (data: AccountProfileData) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
-    await updateProfile(auth.currentUser!, { displayName: data.displayName });
-    await updateDoc(doc(db, 'users', currentUser.uid), { displayName: data.displayName });
-    // The onSnapshot listener will automatically update the state.
+    const user = auth.currentUser!;
+    
+    await updateProfile(user, { displayName: data.displayName });
+    await updateDoc(doc(db, 'users', user.uid), { displayName: data.displayName });
+    await updateUserProfileInProjects(user.uid, { displayName: data.displayName });
   };
 
   const uploadAndUpdateAvatar = async (file: File, onProgress: (p: number) => void) => {
     if (!currentUser) throw new Error("Usuário não autenticado");
-    const photoURL = await uploadAvatar(currentUser.uid, file, onProgress);
-    await updateProfile(auth.currentUser!, { photoURL });
-    await updateDoc(doc(db, 'users', currentUser.uid), { photoURL });
-     // The onSnapshot listener will automatically update the state.
+    const user = auth.currentUser!;
+
+    const photoURL = await uploadAvatar(user.uid, file, onProgress);
+    await updateProfile(user, { photoURL });
+    await updateDoc(doc(db, 'users', user.uid), { photoURL });
+    await updateUserProfileInProjects(user.uid, { photoURL });
   };
 
   const sendPasswordReset = async () => {

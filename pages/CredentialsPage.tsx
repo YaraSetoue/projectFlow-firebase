@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, orderBy } from '@firebase/firestore';
 import { KeyRound, Lock, Unlock, Loader2, PlusCircle, LogOut, Eye, EyeOff, Copy, Trash2, Pencil, AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 import { useProject } from '../contexts/ProjectContext';
 import { useAuth } from '../hooks/useAuth';
@@ -131,7 +132,7 @@ const CredentialCard = ({ credential, masterKey, salt, isOwner, onEdit }: { cred
             try {
                 valueToCopy = decryptValue(credential.value, credential.iv, masterKey, salt);
             } catch (error) {
-                 alert("Não foi possível descriptografar para copiar. Verifique a chave mestra.");
+                 toast.error("Não foi possível descriptografar para copiar. Verifique a chave mestra.");
                  return;
             }
         }
@@ -146,7 +147,7 @@ const CredentialCard = ({ credential, masterKey, salt, isOwner, onEdit }: { cred
         try {
             await deleteCredential(credential.projectId, credential.id);
         } catch (error) {
-            alert('Falha ao excluir a credencial.');
+            toast.error('Falha ao excluir a credencial.');
             setIsDeleting(false);
         }
     };

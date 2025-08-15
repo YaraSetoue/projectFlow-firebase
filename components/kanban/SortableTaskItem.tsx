@@ -21,7 +21,11 @@ const SortableTaskItem: React.FC<SortableTaskItemProps> = ({ id, task, onTaskCli
         transform,
         transition,
         isDragging,
-    } = useSortable({ id: id, data: { type: 'Task', task }});
+    } = useSortable({ 
+        id: id, 
+        data: { type: 'Task', task },
+        disabled: ['in_testing', 'approved', 'done'].includes(task.status),
+    });
 
     const style = {
         transform: CSS.Transform.toString(transform),

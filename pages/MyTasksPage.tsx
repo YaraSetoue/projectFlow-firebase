@@ -21,8 +21,6 @@ const MyTasksPage = () => {
     const [modulesMap, setModulesMap] = useState<Record<string, Record<string, Module>>>({});
     
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-    const [selectedProjectMembers, setSelectedProjectMembers] = useState<Member[]>([]);
-    const [membersLoading, setMembersLoading] = useState(false);
 
     // We need all tasks for dependency lookups in the modal - Scoped to project for performance
     const allTasksForProjectQuery = useMemo(() => 
@@ -63,31 +61,39 @@ const MyTasksPage = () => {
                 const userTasks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
                 setTasks(userTasks);
 
-                // Fetch unique project and module details
+                // Fetch unique project and module details for projects associated with the tasks
                 const projectIds = [...new Set(userTasks.map(t => t.projectId))];
-                const newProjectsMap: Record<string, Project> = { ...projectsMap };
-                const newModulesMap: Record<string, Record<string, Module>> = { ...modulesMap };
 
-                const fetchPromises = projectIds
-                    .filter(id => !newProjectsMap[id] || !newModulesMap[id]) // Only fetch if not already present
-                    .map(async (pId) => {
-                        const projectDoc = await getDoc(doc(db, 'projects', pId));
-                        if (projectDoc.exists()) {
-                            newProjectsMap[pId] = { id: projectDoc.id, ...projectDoc.data() } as Project;
-                        }
-
-                        const modulesQuery = query(collection(db, 'projects', pId, 'modules'));
-                        const modulesSnapshot = await getDocs(modulesQuery);
-                        const moduleLookup: Record<string, Module> = {};
+                if (projectIds.length > 0) {
+                    const fetchedData = await Promise.all(projectIds.map(async (pId) => {
+                        const projectPromise = getDoc(doc(db, 'projects', pId));
+                        const modulesPromise = getDocs(query(collection(db, 'projects', pId, 'modules')));
+                        
+                        const [projectDoc, modulesSnapshot] = await Promise.all([projectPromise, modulesPromise]);
+                        
+                        const project = projectDoc.exists() ? { id: projectDoc.id, ...projectDoc.data() } as Project : null;
+                        
+                        const modules: Record<string, Module> = {};
                         modulesSnapshot.forEach(moduleDoc => {
-                            moduleLookup[moduleDoc.id] = { id: moduleDoc.id, ...moduleDoc.data() } as Module;
+                            modules[moduleDoc.id] = { id: moduleDoc.id, ...moduleDoc.data() } as Module;
                         });
-                        newModulesMap[pId] = moduleLookup;
-                    });
+                        
+                        return { pId, project, modules };
+                    }));
 
-                await Promise.all(fetchPromises);
-                setProjectsMap(newProjectsMap);
-                setModulesMap(newModulesMap);
+                    const newProjectsMap: Record<string, Project> = {};
+                    const newModulesMap: Record<string, Record<string, Module>> = {};
+
+                    fetchedData.forEach(({ pId, project, modules }) => {
+                        if (project) {
+                            newProjectsMap[pId] = project;
+                        }
+                        newModulesMap[pId] = modules;
+                    });
+                    
+                    setProjectsMap(newProjectsMap);
+                    setModulesMap(newModulesMap);
+                }
             } catch (error) {
                 console.error("Error fetching my tasks:", error);
             } finally {
@@ -98,50 +104,15 @@ const MyTasksPage = () => {
         fetchTasksAndProjects();
     }, [currentUser]);
     
-    // When a task is selected, we need to load its project context for the modal
-    useEffect(() => {
-        if (!selectedTask) return;
-
-        const fetchModalData = async () => {
-            setMembersLoading(true);
-            const project = projectsMap[selectedTask.projectId];
-            if (!project || !project.memberUids) {
-                setSelectedProjectMembers([]);
-                setMembersLoading(false);
-                return;
-            }
-
-            try {
-                const uids = project.memberUids;
-                const usersRef = collection(db, 'users');
-                const usersData: User[] = [];
-
-                for (let i = 0; i < uids.length; i += 30) {
-                    const chunk = uids.slice(i, i + 30);
-                    const q = query(usersRef, where('uid', 'in', chunk));
-                    const querySnapshot = await getDocs(q);
-                    querySnapshot.forEach(doc => usersData.push(doc.data() as User));
-                }
-
-                const combined = usersData.map(user => ({
-                    ...user,
-                    role: project.members[user.uid]
-                })).filter(member => member.role);
-                
-                setSelectedProjectMembers(combined as Member[]);
-            } catch (e) {
-                console.error("Failed to fetch member details for modal", e);
-            } finally {
-                setMembersLoading(false);
-            }
-        };
-        
-        fetchModalData();
-
+    const selectedProjectMembers = useMemo(() => {
+        if (!selectedTask) return [];
+        const project = projectsMap[selectedTask.projectId];
+        if (!project?.members) return [];
+        return Object.values(project.members);
     }, [selectedTask, projectsMap]);
 
     const tasksByProject = useMemo(() => {
-        return tasks.reduce((acc, task) => {
+        return tasks.reduce((acc: Record<string, { project: Project, tasks: Task[] }>, task) => {
             const project = projectsMap[task.projectId];
             if (project) {
                 if (!acc[project.id]) {
@@ -150,7 +121,7 @@ const MyTasksPage = () => {
                 acc[project.id].tasks.push(task);
             }
             return acc;
-        }, {} as Record<string, { project: Project, tasks: Task[] }>);
+        }, {});
     }, [tasks, projectsMap]);
 
     const renderContent = () => {
@@ -229,7 +200,7 @@ const MyTasksPage = () => {
 
             {renderContent()}
 
-            {selectedTask && projectsMap[selectedTask.projectId] && !membersLoading && (
+            {selectedTask && projectsMap[selectedTask.projectId] && (
                 <TaskDetailModal
                     isOpen={!!selectedTask}
                     onClose={() => setSelectedTask(null)}

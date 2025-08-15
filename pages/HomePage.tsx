@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, where } from '@firebase/firestore';
 import { PlusCircle, LayoutGrid, Loader2, FlaskConical } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 import { db } from '../firebase/config';
 import { useAuth } from '../hooks/useAuth';
@@ -31,7 +32,7 @@ const EmptyState = ({ onOpenModal }: { onOpenModal: () => void }) => {
             }, 1000);
         } catch (error: any) {
             console.error("Failed to seed database:", error);
-            alert(`An error occurred while creating the sample project: ${error.message}`);
+            toast.error("Ocorreu um erro ao criar o projeto de exemplo.");
         } finally {
             setIsSeeding(false);
         }

@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useEffect } from 'react';
 // @ts-ignore
 import { useParams, Link } from 'react-router-dom';
@@ -89,36 +90,12 @@ const ProjectActivitiesPage = () => {
     const activitiesQuery = useMemo(() => query(collection(db, 'projects', projectId, 'activity'), orderBy('createdAt', 'desc')), [projectId]);
     const { data: activities, loading: activitiesLoading, error: activitiesError } = useFirestoreQuery<Activity>(activitiesQuery);
 
-    const [members, setMembers] = useState<Member[]>([]);
-    const [membersLoading, setMembersLoading] = useState(true);
-
-    useEffect(() => {
-        if (!project?.memberUids || project.memberUids.length === 0) {
-            setMembers([]);
-            setMembersLoading(false);
-            return;
-        }
-        const fetchMembers = async () => {
-            setMembersLoading(true);
-            try {
-                const uids = project.memberUids;
-                const usersRef = collection(db, 'users');
-                const usersData: User[] = [];
-                for (let i = 0; i < uids.length; i += 30) {
-                    const chunk = uids.slice(i, i + 30);
-                    const q = query(usersRef, where('uid', 'in', chunk));
-                    const snapshot = await getDocs(q);
-                    snapshot.forEach(doc => usersData.push(doc.data() as User));
-                }
-                const detailedMembers = usersData.map(user => ({ ...user, role: project.members[user.uid] })).filter(m => m.role) as Member[];
-                setMembers(detailedMembers);
-            } catch (e) { console.error("Failed to fetch members", e); }
-            finally { setMembersLoading(false); }
-        };
-        fetchMembers();
+    const members = useMemo(() => {
+        if (!project?.members) return [];
+        return Object.values(project.members);
     }, [project]);
 
-    const loading = activitiesLoading || membersLoading;
+    const loading = activitiesLoading;
     const error = activitiesError;
 
     // Data Aggregation
